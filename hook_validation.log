@@ -1,0 +1,29 @@
+========================================
+Validating scx_flow hook coverage
+Current time: Mon Mar 30 10:46:34 AM WIB 2026
+Scheduler: scx_flow_1.0.0_x86_64_unknown_linux_gnu
+Binary: /usr/bin/scx_flow
+========================================
+
+>>> Step 1: Wake-heavy runnable() validation...
+Max runnable() wakeups seen in one monitor window: 789
+[scx_flow] mode=balanced gen=4 run=2 reserve_disp=0 shared_disp=830 local_fast=1635 wake_preempt=0 refill=2459 exhaust=9 pos_wake=1624 reserve_local=1636 reserve_global=0 shared_wake=806 runnable=47 cpu_release=24 init_task=2 enable=2 exit_task=2 reserve_cap_us=250 shared_slice_us=1000 refill_floor_us=100 preempt_budget_us=150 preempt_refill_us=200
+[scx_flow] mode=balanced gen=4 run=3 reserve_disp=0 shared_disp=828 local_fast=1534 wake_preempt=0 refill=2361 exhaust=20 pos_wake=1562 reserve_local=1594 reserve_global=0 shared_wake=791 runnable=59 cpu_release=44 init_task=0 enable=0 exit_task=0 reserve_cap_us=250 shared_slice_us=1000 refill_floor_us=100 preempt_budget_us=150 preempt_refill_us=200
+[scx_flow] mode=balanced gen=4 run=3 reserve_disp=0 shared_disp=896 local_fast=2719 wake_preempt=0 refill=3811 exhaust=10 pos_wake=2926 reserve_local=2935 reserve_global=0 shared_wake=882 runnable=262 cpu_release=19 init_task=0 enable=0 exit_task=0 reserve_cap_us=250 shared_slice_us=1000 refill_floor_us=100 preempt_budget_us=150 preempt_refill_us=200
+[scx_flow] mode=balanced gen=4 run=3 reserve_disp=0 shared_disp=328 local_fast=1480 wake_preempt=0 refill=1817 exhaust=7 pos_wake=1472 reserve_local=1475 reserve_global=0 shared_wake=316 runnable=52 cpu_release=11 init_task=0 enable=0 exit_task=0 reserve_cap_us=250 shared_slice_us=1000 refill_floor_us=100 preempt_budget_us=150 preempt_refill_us=200
+[scx_flow] mode=balanced gen=4 run=5 reserve_disp=0 shared_disp=259 local_fast=1406 wake_preempt=0 refill=1672 exhaust=1 pos_wake=1418 reserve_local=1441 reserve_global=0 shared_wake=254 runnable=12 cpu_release=27 init_task=0 enable=0 exit_task=0 reserve_cap_us=250 shared_slice_us=1000 refill_floor_us=100 preempt_budget_us=150 preempt_refill_us=200
+
+>>> Step 2: cpu_release() rescue validation...
+Max cpu_release() rescues seen in one monitor window: 56
+[scx_flow] mode=balanced gen=4 run=3 reserve_disp=0 shared_disp=392 local_fast=1759 wake_preempt=0 refill=2198 exhaust=3 pos_wake=1818 reserve_local=1826 reserve_global=0 shared_wake=377 runnable=59 cpu_release=21 init_task=0 enable=0 exit_task=0 reserve_cap_us=250 shared_slice_us=1000 refill_floor_us=100 preempt_budget_us=150 preempt_refill_us=200
+[scx_flow] mode=balanced gen=4 run=3 reserve_disp=0 shared_disp=265 local_fast=1171 wake_preempt=3 refill=1447 exhaust=0 pos_wake=1180 reserve_local=1181 reserve_global=0 shared_wake=263 runnable=22 cpu_release=2 init_task=0 enable=0 exit_task=0 reserve_cap_us=250 shared_slice_us=1000 refill_floor_us=100 preempt_budget_us=150 preempt_refill_us=200
+[scx_flow] mode=balanced gen=4 run=3 reserve_disp=0 shared_disp=253 local_fast=1240 wake_preempt=0 refill=1519 exhaust=3 pos_wake=1256 reserve_local=1263 reserve_global=0 shared_wake=248 runnable=41 cpu_release=8 init_task=2 enable=2 exit_task=2 reserve_cap_us=250 shared_slice_us=1000 refill_floor_us=100 preempt_budget_us=150 preempt_refill_us=200
+[scx_flow] mode=balanced gen=4 run=2 reserve_disp=0 shared_disp=409 local_fast=1363 wake_preempt=0 refill=1792 exhaust=12 pos_wake=1391 reserve_local=1405 reserve_global=0 shared_wake=385 runnable=78 cpu_release=19 init_task=0 enable=0 exit_task=0 reserve_cap_us=250 shared_slice_us=1000 refill_floor_us=100 preempt_budget_us=150 preempt_refill_us=200
+[scx_flow] mode=balanced gen=4 run=2 reserve_disp=0 shared_disp=251 local_fast=1347 wake_preempt=0 refill=1591 exhaust=3 pos_wake=1348 reserve_local=1357 reserve_global=0 shared_wake=241 runnable=13 cpu_release=19 init_task=0 enable=0 exit_task=0 reserve_cap_us=250 shared_slice_us=1000 refill_floor_us=100 preempt_budget_us=150 preempt_refill_us=200
+
+========================================
+Validation summary
+========================================
+runnable() max activity: 789
+cpu_release() max activity: 56
+Hook validation looks good.

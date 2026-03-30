@@ -1,0 +1,3 @@
+05:27:40 [INFO] Starting scx_flow scheduler
+EXIT: unregistered from user space
+05:32:27 [INFO] Scheduler exited: UserExitInfo { kind: 64, exit_code: 0, reason: Some("unregistered from user space"), msg: None, dump: None }

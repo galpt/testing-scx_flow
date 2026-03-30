@@ -1,0 +1,155 @@
+03:21:45 [INFO] Starting scx_flow scheduler
+03:22:16 [INFO] autotune=latency gen=1 reserve_cap=275us shared_slice=900us refill_floor=120us preempt_budget=175us preempt_refill=225us
+03:22:17 [INFO] autotune=latency gen=2 reserve_cap=300us shared_slice=900us refill_floor=140us preempt_budget=200us preempt_refill=250us
+03:22:18 [INFO] autotune=latency gen=3 reserve_cap=300us shared_slice=900us refill_floor=140us preempt_budget=225us preempt_refill=250us
+03:22:20 [INFO] autotune=balanced gen=4 reserve_cap=275us shared_slice=1000us refill_floor=120us preempt_budget=200us preempt_refill=225us
+03:22:21 [INFO] autotune=balanced gen=5 reserve_cap=250us shared_slice=1000us refill_floor=100us preempt_budget=175us preempt_refill=200us
+03:22:22 [INFO] autotune=balanced gen=6 reserve_cap=250us shared_slice=1000us refill_floor=100us preempt_budget=150us preempt_refill=200us
+03:30:06 [INFO] autotune=latency gen=7 reserve_cap=275us shared_slice=900us refill_floor=120us preempt_budget=175us preempt_refill=225us
+03:30:07 [INFO] autotune=latency gen=8 reserve_cap=300us shared_slice=900us refill_floor=140us preempt_budget=200us preempt_refill=250us
+03:30:08 [INFO] autotune=balanced gen=9 reserve_cap=275us shared_slice=1000us refill_floor=120us preempt_budget=175us preempt_refill=225us
+03:30:09 [INFO] autotune=balanced gen=10 reserve_cap=250us shared_slice=1000us refill_floor=100us preempt_budget=150us preempt_refill=200us
+
+DEBUG DUMP
+================================================================================
+
+kworker/u64:6[167958] triggered exit kind 1026:
+  runnable task stall (bash[167948] failed to run for 5.037s)
+
+Backtrace:
+  scx_watchdog_workfn+0x12a/0x1c0
+  process_scheduled_works+0x1f3/0x5e0
+  worker_thread+0x18d/0x340
+  kthread+0x205/0x280
+  ret_from_fork+0x118/0x260
+  ret_from_fork_asm+0x1a/0x30
+
+CPU states
+----------
+
+CPU 0   : nr_run=7 flags=0x1 cpu_rel=0 ops_qseq=16155157 ksync=56018600
+          curr=bash[167951] class=rt_sched_class
+
+  R bash[167948] -5037ms
+      scx_state/flags=3/0x1 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x401
+      dsq_vtime=0 slice=900000 weight=244
+      cpus=0001 no_mig=0
+
+    asm_sysvec_apic_timer_interrupt+0x1a/0x20
+
+  R bash[167949] -5036ms
+      scx_state/flags=3/0x1 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x401
+      dsq_vtime=0 slice=900000 weight=244
+      cpus=0001 no_mig=0
+
+    asm_sysvec_apic_timer_interrupt+0x1a/0x20
+
+  R bash[167947] -5035ms
+      scx_state/flags=3/0x1 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x401
+      dsq_vtime=0 slice=900000 weight=244
+      cpus=0001 no_mig=0
+
+    asm_sysvec_apic_timer_interrupt+0x1a/0x20
+
+  R kworker/0:0[153409] -4928ms
+      scx_state/flags=3/0x9 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x8000000000000002
+      dsq_vtime=3775014 slice=900000 weight=100
+      cpus=0001 no_mig=0
+
+    kthread+0x205/0x280
+    ret_from_fork+0x118/0x260
+    ret_from_fork_asm+0x1a/0x30
+
+  R timeout[167944] -545ms
+      scx_state/flags=3/0x9 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x8000000000000002
+      dsq_vtime=0 slice=250000 weight=244
+      cpus=0001 no_mig=0
+
+    __do_sys_rt_sigsuspend+0x6f/0x80
+    do_syscall_64+0x75/0x280
+    entry_SYSCALL_64_after_hwframe+0x79/0x81
+
+  R timeout[167943] -544ms
+      scx_state/flags=3/0x9 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x8000000000000002
+      dsq_vtime=0 slice=250000 weight=244
+      cpus=0001 no_mig=0
+
+    __do_sys_rt_sigsuspend+0x6f/0x80
+    do_syscall_64+0x75/0x280
+    entry_SYSCALL_64_after_hwframe+0x79/0x81
+
+  R timeout[167945] -543ms
+      scx_state/flags=3/0x9 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x8000000000000002
+      dsq_vtime=0 slice=250000 weight=244
+      cpus=0001 no_mig=0
+
+    __do_sys_rt_sigsuspend+0x6f/0x80
+    do_syscall_64+0x75/0x280
+    entry_SYSCALL_64_after_hwframe+0x79/0x81
+
+CPU 2   : nr_run=1 flags=0x9 cpu_rel=0 ops_qseq=13245925 ksync=46195764
+          curr=code[55822] class=ext_sched_class
+
+ *R code[55822] -107ms
+      scx_state/flags=3/0xd dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=33280132 slice=2429 weight=244
+      cpus=ffff no_mig=0
+
+CPU 13  : nr_run=1 flags=0x1 cpu_rel=0 ops_qseq=10896635 ksync=36926702
+          curr=swapper/13[0] class=idle_sched_class
+
+  R code[55522] +0ms
+      scx_state/flags=3/0x9 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x401
+      dsq_vtime=424685670 slice=1000000 weight=244
+      cpus=ffff no_mig=0
+
+    __x64_sys_futex+0x142/0x260
+    do_syscall_64+0x75/0x280
+    entry_SYSCALL_64_after_hwframe+0x79/0x81
+
+CPU 14  : nr_run=1 flags=0x1 cpu_rel=0 ops_qseq=12466253 ksync=47600659
+          curr=kworker/u64:6[167958] class=ext_sched_class
+
+ *R kworker/u64:6[167958] +0ms
+      scx_state/flags=3/0xd dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=0 slice=250000 weight=100
+      cpus=ffff no_mig=0
+
+    scx_dump_state+0x7d1/0xce0
+    scx_error_irq_workfn+0x24/0x40
+    irq_work_run+0x63/0xd0
+    __sysvec_irq_work+0x1f/0x30
+    sysvec_irq_work+0x4f/0x80
+    asm_sysvec_irq_work+0x1a/0x20
+    scx_watchdog_workfn+0x15d/0x1c0
+    process_scheduled_works+0x1f3/0x5e0
+    worker_thread+0x18d/0x340
+    kthread+0x205/0x280
+    ret_from_fork+0x118/0x260
+    ret_from_fork_asm+0x1a/0x30
+
+Event counters
+--------------
+              SCX_EV_SELECT_CPU_FALLBACK:                0
+       SCX_EV_DISPATCH_LOCAL_DSQ_OFFLINE:                0
+               SCX_EV_DISPATCH_KEEP_LAST:                0
+                 SCX_EV_ENQ_SKIP_EXITING:                0
+      SCX_EV_ENQ_SKIP_MIGRATION_DISABLED:                0
+                 SCX_EV_REFILL_SLICE_DFL:                2
+                  SCX_EV_BYPASS_DURATION:         27821247
+                  SCX_EV_BYPASS_DISPATCH:                2
+                  SCX_EV_BYPASS_ACTIVATE:                1
+
+================================================================================
+
+Error: EXIT: runnable task stall (bash[167948] failed to run for 5.037s)

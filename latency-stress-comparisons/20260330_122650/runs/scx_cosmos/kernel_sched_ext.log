@@ -1,0 +1,2 @@
+Mar 30 12:27:36 galpt-laptop kernel: sched_ext: BPF scheduler "cosmos_1.1.0_gc505008f_x86_64_unknown_linux_gnu" disabled (runnable task stall)
+Mar 30 12:27:36 galpt-laptop kernel: sched_ext: cosmos_1.1.0_gc505008f_x86_64_unknown_linux_gnu: cyclictest[852300] failed to run for 6.990s

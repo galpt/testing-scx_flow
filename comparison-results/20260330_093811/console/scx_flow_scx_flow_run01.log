@@ -1,0 +1,11 @@
+02:41:24 [INFO] Starting scx_flow scheduler
+02:41:48 [INFO] autotune=latency gen=1 reserve_cap=275us shared_slice=900us refill_floor=120us preempt_budget=175us preempt_refill=225us
+02:41:49 [INFO] autotune=balanced gen=2 reserve_cap=250us shared_slice=1000us refill_floor=100us preempt_budget=150us preempt_refill=200us
+02:41:55 [INFO] autotune=latency gen=3 reserve_cap=275us shared_slice=900us refill_floor=120us preempt_budget=175us preempt_refill=225us
+02:41:56 [INFO] autotune=latency gen=4 reserve_cap=300us shared_slice=900us refill_floor=140us preempt_budget=200us preempt_refill=250us
+02:41:57 [INFO] autotune=latency gen=5 reserve_cap=300us shared_slice=900us refill_floor=140us preempt_budget=225us preempt_refill=250us
+02:41:59 [INFO] autotune=balanced gen=6 reserve_cap=275us shared_slice=1000us refill_floor=120us preempt_budget=200us preempt_refill=225us
+02:42:00 [INFO] autotune=balanced gen=7 reserve_cap=250us shared_slice=1000us refill_floor=100us preempt_budget=175us preempt_refill=200us
+02:42:01 [INFO] autotune=balanced gen=8 reserve_cap=250us shared_slice=1000us refill_floor=100us preempt_budget=150us preempt_refill=200us
+EXIT: unregistered from user space
+02:57:10 [INFO] Scheduler exited: UserExitInfo { kind: 64, exit_code: 0, reason: Some("unregistered from user space"), msg: None, dump: None }

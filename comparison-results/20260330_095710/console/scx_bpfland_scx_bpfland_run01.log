@@ -1,0 +1,10 @@
+09:57:11 [0m[34m[INFO] [0mNUMA nodes: 1
+09:57:11 [0m[34m[INFO] [0mDisabling NUMA optimizations
+09:57:11 [0m[34m[INFO] [0mscx_bpfland 1.1.0-gc505008f x86_64-unknown-linux-gnu SMT on
+09:57:11 [0m[34m[INFO] [0mscheduler options: /usr/bin/scx_bpfland
+09:57:11 [0m[34m[INFO] [0mscheduler flags: 0x36
+09:57:11 [0m[34m[INFO] [0mprimary CPU domain = 0xffff
+09:57:11 [0m[34m[INFO] [0mcpufreq performance level: max
+09:57:11 [0m[34m[INFO] [0mSMT sibling CPUs: [1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 15, 14]
+EXIT: unregistered from user space
+09:58:48 [0m[34m[INFO] [0mUnregister scx_bpfland scheduler

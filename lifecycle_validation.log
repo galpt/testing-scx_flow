@@ -1,0 +1,23 @@
+========================================
+Validating scx_flow lifecycle coverage
+Current time: Mon Mar 30 10:46:54 AM WIB 2026
+Scheduler: scx_flow_1.0.0_x86_64_unknown_linux_gnu
+Binary: /usr/bin/scx_flow
+========================================
+
+Max init_task() activity seen in one monitor window: 68
+Max enable() activity seen in one monitor window: 68
+Max exit_task() activity seen in one monitor window: 69
+[scx_flow] mode=balanced gen=0 run=2 reserve_disp=0 shared_disp=255 local_fast=1216 wake_preempt=0 refill=1471 exhaust=2 pos_wake=1214 reserve_local=1221 reserve_global=0 shared_wake=249 runnable=16 cpu_release=10 init_task=0 enable=0 exit_task=0 reserve_cap_us=250 shared_slice_us=1000 refill_floor_us=100 preempt_budget_us=150 preempt_refill_us=200
+[scx_flow] mode=balanced gen=0 run=4 reserve_disp=0 shared_disp=311 local_fast=1219 wake_preempt=0 refill=1500 exhaust=2 pos_wake=1226 reserve_local=1231 reserve_global=0 shared_wake=269 runnable=25 cpu_release=45 init_task=0 enable=0 exit_task=0 reserve_cap_us=250 shared_slice_us=1000 refill_floor_us=100 preempt_budget_us=150 preempt_refill_us=200
+[scx_flow] mode=balanced gen=0 run=12 reserve_disp=0 shared_disp=402 local_fast=1498 wake_preempt=0 refill=1887 exhaust=13 pos_wake=1503 reserve_local=1510 reserve_global=0 shared_wake=379 runnable=33 cpu_release=29 init_task=0 enable=0 exit_task=0 reserve_cap_us=250 shared_slice_us=1000 refill_floor_us=100 preempt_budget_us=150 preempt_refill_us=200
+[scx_flow] mode=balanced gen=0 run=5 reserve_disp=0 shared_disp=448 local_fast=1473 wake_preempt=0 refill=1904 exhaust=7 pos_wake=1492 reserve_local=1504 reserve_global=0 shared_wake=408 runnable=40 cpu_release=46 init_task=0 enable=0 exit_task=0 reserve_cap_us=250 shared_slice_us=1000 refill_floor_us=100 preempt_budget_us=150 preempt_refill_us=200
+[scx_flow] mode=balanced gen=0 run=2 reserve_disp=0 shared_disp=291 local_fast=1394 wake_preempt=0 refill=1695 exhaust=0 pos_wake=1395 reserve_local=1400 reserve_global=0 shared_wake=279 runnable=46 cpu_release=13 init_task=0 enable=0 exit_task=0 reserve_cap_us=250 shared_slice_us=1000 refill_floor_us=100 preempt_budget_us=150 preempt_refill_us=200
+
+========================================
+Validation summary
+========================================
+init_task() max activity: 68
+enable() max activity: 68
+exit_task() max activity: 69
+Lifecycle validation looks good.
