@@ -1,0 +1,27 @@
+=== Measuring locality and placement signals for scx_flow ===
+Results directory: /home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/locality-measurements/20260331_191050
+Current scheduler: scx_flow_1.0.0_x86_64_unknown_linux_gnu
+Duration: 20s
+Sampling interval: 20ms
+stress-ng workers: 4 @ 80%
+stress-ng: info:  [58470] setting to a 20 secs run per stressor
+stress-ng: info:  [58470] dispatching hogs: 4 cpu
+stress-ng: info:  [58470] note: 16 cpus have scaling governors set to powersave and this may impact performance; setting /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor to 'performance' may improve performance
+stress-ng: info:  [58486] cpu: for stable load results, select a specific cpu stress method with --cpu-method other than 'all'
+stress-ng: info:  [58487] cpu: for stable load results, select a specific cpu stress method with --cpu-method other than 'all'
+stress-ng: info:  [58488] cpu: for stable load results, select a specific cpu stress method with --cpu-method other than 'all'
+stress-ng: info:  [58489] cpu: for stable load results, select a specific cpu stress method with --cpu-method other than 'all'
+stress-ng: metrc: [58470] stressor       bogo ops real time  usr time  sys time   bogo ops/s     bogo ops/s
+stress-ng: metrc: [58470]                           (secs)    (secs)    (secs)   (real time) (usr+sys time)
+stress-ng: metrc: [58470] cpu              110479     20.00     63.93      0.10      5522.72        1725.38
+stress-ng: info:  [58470] skipped: 0
+stress-ng: info:  [58470] passed: 4: cpu (4)
+stress-ng: info:  [58470] failed: 0
+stress-ng: info:  [58470] metrics untrustworthy: 0
+stress-ng: info:  [58470] successful run completed in 20.01 secs
+
+=== Locality measurement complete ===
+CPU changes / 1000 samples: 50.43
+LLC changes / 1000 samples: 0.00
+LLC changes / CPU changes: 0.00
+Report: /home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/locality-measurements/20260331_191050/locality_report.md

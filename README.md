@@ -417,6 +417,14 @@ useful for direct `scx_cosmos` vs `scx_flow` comparisons, and writes a small
 Markdown report plus CSV summary so you can see whether a stall is specific to
 `scx_flow` or reproduces across schedulers.
 
+### `measure_locality_scx_flow.sh`
+
+Runs a focused mixed workload while sampling `cyclictest` thread placement,
+capturing CPU-to-LLC topology, recording `scx_flow --monitor` output, and
+optionally collecting a small system-wide `perf stat` snapshot. Use this
+before making topology-aware changes so you can see whether the remaining gap
+actually looks like a locality problem.
+
 ### `mini_benchmarker_plot.py`
 
 Reads the summary env files written by `mini_benchmarker.sh` and renders the
