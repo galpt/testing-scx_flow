@@ -1,0 +1,5 @@
+01:35:27 [INFO] scx_flow 1.0.0 x86_64-unknown-linux-gnu
+01:35:27 [INFO] Starting scx_flow scheduler
+01:36:01 [INFO] autotune=latency gen=1 reserve_cap=275us shared_slice=900us refill_floor=120us preempt_budget=175us preempt_refill=225us
+01:36:02 [INFO] autotune=latency gen=2 reserve_cap=300us shared_slice=900us refill_floor=140us preempt_budget=200us preempt_refill=250us
+01:36:03 [INFO] autotune=latency gen=3 reserve_cap=300us shared_slice=900us refill_floor=140us preempt_budget=225us preempt_refill=250us

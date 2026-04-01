@@ -10,6 +10,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BENCHMARK_SCRIPT="$SCRIPT_DIR/benchmark.sh"
 PLOTTER_SCRIPT="$SCRIPT_DIR/mini_benchmarker_plot.py"
+RESET_SCRIPT="$SCRIPT_DIR/reset_sched_ext_state.sh"
 RESULTS_ROOT="$SCRIPT_DIR/comparison-results"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RESULTS_DIR="$RESULTS_ROOT/$TIMESTAMP"
@@ -228,13 +229,21 @@ wait_for_sched_ext_idle() {
 }
 
 stop_all_schedulers() {
+    run_privileged systemctl unset-environment SCX_SCHEDULER_OVERRIDE >/dev/null 2>&1 || true
+    run_privileged systemctl unset-environment SCX_FLAGS_OVERRIDE >/dev/null 2>&1 || true
+
+    if [ -x "$RESET_SCRIPT" ]; then
+        say "Resetting sched_ext state"
+        run_privileged "$RESET_SCRIPT"
+        return
+    fi
+
+    warn "reset_sched_ext_state.sh not available; falling back to inline cleanup"
+
     if service_exists && systemctl is-active --quiet scx.service; then
         say "Stopping scx.service"
         run_privileged systemctl stop scx.service || true
     fi
-
-    run_privileged systemctl unset-environment SCX_SCHEDULER_OVERRIDE >/dev/null 2>&1 || true
-    run_privileged systemctl unset-environment SCX_FLAGS_OVERRIDE >/dev/null 2>&1 || true
 
     for proc in scx_flow scx_cosmos scx_bpfland; do
         if pgrep -x "$proc" >/dev/null 2>&1; then
@@ -287,6 +296,9 @@ start_scheduler_manual() {
     if wait_for_scheduler_state "$short_name" active; then
         ok "Scheduler state is ready for $scheduler"
     else
+        if grep -Fq "another sched_ext scheduler is already running" "$runtime_log" 2>/dev/null; then
+            err "$scheduler refused to start because another sched_ext scheduler was still active"
+        fi
         err "Timed out waiting for scheduler state: $scheduler"
         return 1
     fi

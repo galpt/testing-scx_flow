@@ -87,7 +87,7 @@ report_scheduler_processes() {
     local found=0
     local scheduler
 
-    for scheduler in scx_flow scx_timely scx_bpfland scx_cake; do
+    for scheduler in scx_flow scx_timely scx_bpfland scx_cake scx_cosmos; do
         if pgrep -x "$scheduler" >/dev/null 2>&1; then
             if [ "$found" -eq 0 ]; then
                 warn "Some scheduler processes still appear to be alive:"
@@ -102,7 +102,7 @@ report_scheduler_processes() {
 
 stop_service_if_present
 
-for scheduler in scx_flow scx_timely scx_bpfland scx_cake; do
+for scheduler in scx_flow scx_timely scx_bpfland scx_cake scx_cosmos; do
     stop_scheduler "$scheduler"
 done
 
@@ -118,7 +118,7 @@ else
     exit 1
 fi
 
-if report_scheduler_processes; then
+if ! report_scheduler_processes; then
     exit 1
 fi
 

@@ -1,0 +1,10 @@
+08:33:51 [0m[34m[INFO] [0mNUMA nodes: 1
+08:33:51 [0m[34m[INFO] [0mDisabling NUMA optimizations
+08:33:51 [0m[34m[INFO] [0mscx_cosmos 1.1.0-gc505008f x86_64-unknown-linux-gnu SMT on
+08:33:51 [0m[34m[INFO] [0mscheduler options: /usr/bin/scx_cosmos
+08:33:51 [0m[34m[INFO] [0mscheduler flags: 0x36
+08:33:51 [0m[34m[INFO] [0mSetting up performance counters for 16 CPUs...
+08:33:51 [0m[34m[INFO] [0mPerformance counters configured successfully for all CPUs
+08:33:51 [0m[34m[INFO] [0mSMT sibling CPUs: [1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 15, 14]
+EXIT: unregistered from user space
+08:35:26 [0m[34m[INFO] [0mUnregister scx_cosmos scheduler
