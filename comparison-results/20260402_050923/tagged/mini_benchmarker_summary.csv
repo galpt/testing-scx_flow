@@ -1,0 +1,5 @@
+scheduler,runs,status,sched_ext_state,current_scheduler,latency_max_us,latency_spikes_over_100us,hackbench_mean_seconds,sysbench_events_per_sec,stressng_bogo_ops_per_sec,notes,log_paths
+scx_cosmos,1,completed,enabled,cosmos_1.1.0_gc505008f_x86_64_unknown_linux_gnu,1949.00,8081.00,0.658,,5234.45,,/home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/comparison-results/20260402_050923/logs/scx_cosmos_run1.log
+scx_bpfland,1,completed,enabled,bpfland_1.1.0_gc505008f_x86_64_unknown_linux_gnu,7760.00,3236.00,0.914,,6224.91,,/home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/comparison-results/20260402_050923/logs/scx_bpfland_run1.log
+scx_cake,1,completed,enabled,cake,4222.00,4347.00,6.790,,6290.01,,/home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/comparison-results/20260402_050923/logs/scx_cake_run1.log
+scx_flow,1,completed,enabled,scx_flow_2.0.0_x86_64_unknown_linux_gnu,141.00,11.00,0.645,,6184.62,,/home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/comparison-results/20260402_050923/logs/scx_flow_run1.log
