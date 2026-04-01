@@ -434,6 +434,22 @@ only the latest three are kept by default. It also records kernel
 `sched_ext`/`scx_flow` events from the run window so runnable-task stalls are
 called out explicitly instead of being mistaken for a clean pass.
 
+### `validate_latency_repeat_scx_flow.sh`
+
+Runs the strict latency-stress validation several times in a row, then writes a
+CSV, env summary, and Markdown report with median and worst-case mixed/RT
+latency metrics. By default it reinstalls `scx_flow` between runs, but it can
+also manually launch another scheduler such as `scx_cosmos` for apples-to-apples
+repeat validation:
+
+```bash
+sudo ./validate_latency_repeat_scx_flow.sh --runs 5
+sudo ./validate_latency_repeat_scx_flow.sh --runs 5 --scheduler-name scx_cosmos --scheduler-bin "$(command -v scx_cosmos)"
+```
+
+Use this before tuning further so single noisy runs do not get mistaken for
+real progress.
+
 ### `latency_stress_compare.sh`
 
 Runs the same latency-stress workload against multiple schedulers, currently

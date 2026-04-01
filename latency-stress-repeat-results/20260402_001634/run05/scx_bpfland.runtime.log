@@ -1,0 +1,180 @@
+00:20:04 [0m[34m[INFO] [0mNUMA nodes: 1
+00:20:04 [0m[34m[INFO] [0mDisabling NUMA optimizations
+00:20:04 [0m[34m[INFO] [0mscx_bpfland 1.1.0-gc505008f x86_64-unknown-linux-gnu SMT on
+00:20:04 [0m[34m[INFO] [0mscheduler options: /usr/bin/scx_bpfland
+00:20:04 [0m[34m[INFO] [0mscheduler flags: 0x36
+00:20:04 [0m[34m[INFO] [0mprimary CPU domain = 0xffff
+00:20:04 [0m[34m[INFO] [0mcpufreq performance level: max
+00:20:04 [0m[34m[INFO] [0mSMT sibling CPUs: [1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 15, 14]
+
+DEBUG DUMP
+================================================================================
+
+kworker/u64:0[12] triggered exit kind 1026:
+  runnable task stall (cyclictest[1231179] failed to run for 6.010s)
+
+Backtrace:
+  scx_watchdog_workfn+0x12a/0x1c0
+  process_scheduled_works+0x1f3/0x5e0
+  worker_thread+0x18d/0x340
+  kthread+0x205/0x280
+  ret_from_fork+0x118/0x260
+  ret_from_fork_asm+0x1a/0x30
+
+CPU states
+----------
+
+CPU 0   : nr_run=3 flags=0x1 cpu_rel=0 ops_qseq=1661378 ksync=6801272
+          curr=bash[1231189] class=rt_sched_class
+
+  R cyclictest[1231179] -6010ms
+      scx_state/flags=3/0x9 dsq_flags=0x1 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x0
+      dsq_vtime=2428326655153 slice=2440000 weight=244
+      cpus=0001 no_mig=0
+
+    __x64_sys_clock_nanosleep+0xea/0x160
+    do_syscall_64+0x75/0x280
+    entry_SYSCALL_64_after_hwframe+0x79/0x81
+
+  R cyclictest[1231183] -6010ms
+      scx_state/flags=3/0x9 dsq_flags=0x1 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x0
+      dsq_vtime=2428327185203 slice=2440000 weight=244
+      cpus=0001 no_mig=0
+
+    __x64_sys_clock_nanosleep+0xea/0x160
+    do_syscall_64+0x75/0x280
+    entry_SYSCALL_64_after_hwframe+0x79/0x81
+
+  R kworker/0:2[148] -5888ms
+      scx_state/flags=3/0x9 dsq_flags=0x1 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x0
+      dsq_vtime=2428592866860 slice=500000 weight=100
+      cpus=0001 no_mig=0
+
+    kthread+0x205/0x280
+    ret_from_fork+0x118/0x260
+    ret_from_fork_asm+0x1a/0x30
+
+CPU 1   : nr_run=1 flags=0x1 cpu_rel=0 ops_qseq=492409 ksync=3281035
+          curr=ThreadPoolForeg[5483] class=ext_sched_class
+
+ *R ThreadPoolForeg[5483] +0ms
+      scx_state/flags=3/0x5 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=2429595984357 slice=2440000 weight=244
+      cpus=ffff no_mig=0
+
+CPU 2   : nr_run=1 flags=0x1 cpu_rel=0 ops_qseq=692380 ksync=4853860
+          curr=code[5475] class=ext_sched_class
+
+ *R code[5475] +0ms
+      scx_state/flags=3/0x5 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=2429274043606 slice=2440000 weight=244
+      cpus=ffff no_mig=0
+
+CPU 3   : nr_run=1 flags=0x1 cpu_rel=0 ops_qseq=549287 ksync=3478365
+          curr=ThreadPoolForeg[5488] class=ext_sched_class
+
+ *R ThreadPoolForeg[5488] +0ms
+      scx_state/flags=3/0x5 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=2431209889527 slice=2440000 weight=244
+      cpus=ffff no_mig=0
+
+CPU 5   : nr_run=1 flags=0x1 cpu_rel=0 ops_qseq=519800 ksync=3550073
+          curr=code[5788] class=ext_sched_class
+
+ *R code[5788] -1ms
+      scx_state/flags=3/0xd dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=2432817357763 slice=1678562 weight=244
+      cpus=ffff no_mig=0
+
+CPU 6   : nr_run=1 flags=0x1 cpu_rel=0 ops_qseq=682420 ksync=5168966
+          curr=swapper/6[0] class=idle_sched_class
+
+  R ThreadPoolForeg[5478] +0ms
+      scx_state/flags=3/0x1 dsq_flags=0x1 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x4
+      dsq_vtime=2429862601384 slice=2440000 weight=244
+      cpus=ffff no_mig=0
+
+    asm_sysvec_apic_timer_interrupt+0x1a/0x20
+
+CPU 9   : nr_run=1 flags=0x9 cpu_rel=0 ops_qseq=503591 ksync=3398323
+          curr=ThreadPoolForeg[5480] class=ext_sched_class
+
+ *R ThreadPoolForeg[5480] -3ms
+      scx_state/flags=3/0x5 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=2430076874052 slice=2440000 weight=244
+      cpus=ffff no_mig=0
+
+CPU 11  : nr_run=1 flags=0x1 cpu_rel=0 ops_qseq=504766 ksync=3854072
+          curr=kworker/u64:0[12] class=ext_sched_class
+
+ *R kworker/u64:0[12] +0ms
+      scx_state/flags=3/0xd dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=2431357970052 slice=1000000 weight=100
+      cpus=ffff no_mig=0
+
+    scx_dump_state+0x7d1/0xce0
+    scx_error_irq_workfn+0x24/0x40
+    irq_work_run+0x63/0xd0
+    __sysvec_irq_work+0x1f/0x30
+    sysvec_irq_work+0x4f/0x80
+    asm_sysvec_irq_work+0x1a/0x20
+    scx_watchdog_workfn+0x15d/0x1c0
+    process_scheduled_works+0x1f3/0x5e0
+    worker_thread+0x18d/0x340
+    kthread+0x205/0x280
+    ret_from_fork+0x118/0x260
+    ret_from_fork_asm+0x1a/0x30
+
+CPU 12  : nr_run=1 flags=0x1 cpu_rel=0 ops_qseq=728544 ksync=5050565
+          curr=ThreadPoolForeg[5484] class=ext_sched_class
+
+ *R ThreadPoolForeg[5484] -1ms
+      scx_state/flags=3/0x5 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=2429774876751 slice=1450554 weight=244
+      cpus=ffff no_mig=0
+
+CPU 13  : nr_run=1 flags=0x1 cpu_rel=0 ops_qseq=509341 ksync=3370155
+          curr=ThreadPoolForeg[5486] class=ext_sched_class
+
+ *R ThreadPoolForeg[5486] -1ms
+      scx_state/flags=3/0x5 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=2429657833428 slice=1442699 weight=244
+      cpus=ffff no_mig=0
+
+CPU 15  : nr_run=1 flags=0x9 cpu_rel=0 ops_qseq=502427 ksync=3196145
+          curr=ThreadPoolForeg[5485] class=ext_sched_class
+
+ *R ThreadPoolForeg[5485] -5ms
+      scx_state/flags=3/0xd dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=2429086636496 slice=2440000 weight=244
+      cpus=ffff no_mig=0
+
+Event counters
+--------------
+              SCX_EV_SELECT_CPU_FALLBACK:                0
+       SCX_EV_DISPATCH_LOCAL_DSQ_OFFLINE:                0
+               SCX_EV_DISPATCH_KEEP_LAST:                1
+                 SCX_EV_ENQ_SKIP_EXITING:                0
+      SCX_EV_ENQ_SKIP_MIGRATION_DISABLED:                0
+                 SCX_EV_REFILL_SLICE_DFL:                9
+                  SCX_EV_BYPASS_DURATION:         21296303
+                  SCX_EV_BYPASS_DISPATCH:                8
+                  SCX_EV_BYPASS_ACTIVATE:                1
+
+================================================================================
+
+00:20:50 [0m[34m[INFO] [0mUnregister scx_bpfland scheduler
+Error: EXIT: runnable task stall (cyclictest[1231179] failed to run for 6.010s)

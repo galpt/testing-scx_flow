@@ -1,0 +1,124 @@
+00:08:27 [0m[34m[INFO] [0mNUMA nodes: 1
+00:08:27 [0m[34m[INFO] [0mDisabling NUMA optimizations
+00:08:27 [0m[34m[INFO] [0mscx_cosmos 1.1.0-gc505008f x86_64-unknown-linux-gnu SMT on
+00:08:27 [0m[34m[INFO] [0mscheduler options: /usr/bin/scx_cosmos
+00:08:27 [0m[34m[INFO] [0mscheduler flags: 0x36
+00:08:27 [0m[34m[INFO] [0mSetting up performance counters for 16 CPUs...
+00:08:27 [0m[34m[INFO] [0mPerformance counters configured successfully for all CPUs
+00:08:27 [0m[34m[INFO] [0mSMT sibling CPUs: [1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 15, 14]
+
+DEBUG DUMP
+================================================================================
+
+kworker/u64:2[121] triggered exit kind 1026:
+  runnable task stall (cyclictest[822914] failed to run for 6.552s)
+
+Backtrace:
+  scx_watchdog_workfn+0x12a/0x1c0
+  process_scheduled_works+0x1f3/0x5e0
+  worker_thread+0x18d/0x340
+  kthread+0x205/0x280
+  ret_from_fork+0x118/0x260
+  ret_from_fork_asm+0x1a/0x30
+
+CPU states
+----------
+
+CPU 0   : nr_run=3 flags=0x9 cpu_rel=0 ops_qseq=1363787 ksync=4875016
+          curr=bash[822918] class=rt_sched_class
+
+  R cyclictest[822914] -6552ms
+      scx_state/flags=3/0x9 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x8000000000000002
+      dsq_vtime=807905673 slice=24400 weight=244
+      cpus=0001 no_mig=0
+
+    __x64_sys_clock_nanosleep+0xea/0x160
+    do_syscall_64+0x75/0x280
+    entry_SYSCALL_64_after_hwframe+0x79/0x81
+
+  R cyclictest[822910] -6550ms
+      scx_state/flags=3/0x9 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x8000000000000002
+      dsq_vtime=807168132 slice=24400 weight=244
+      cpus=0001 no_mig=0
+
+    __x64_sys_clock_nanosleep+0xea/0x160
+    do_syscall_64+0x75/0x280
+    entry_SYSCALL_64_after_hwframe+0x79/0x81
+
+  R kworker/0:0[530137] -6529ms
+      scx_state/flags=3/0x9 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x8000000000000002
+      dsq_vtime=13922511 slice=10000 weight=100
+      cpus=0001 no_mig=0
+
+    kthread+0x205/0x280
+    ret_from_fork+0x118/0x260
+    ret_from_fork_asm+0x1a/0x30
+
+CPU 1   : nr_run=1 flags=0x9 cpu_rel=0 ops_qseq=438381 ksync=2359615
+          curr=code[5788] class=ext_sched_class
+
+ *R code[5788] -26ms
+      scx_state/flags=3/0xd dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=45526594 slice=24400 weight=244
+      cpus=ffff no_mig=0
+
+CPU 5   : nr_run=1 flags=0x1 cpu_rel=0 ops_qseq=465630 ksync=2518182
+          curr=kworker/u64:2[121] class=ext_sched_class
+
+ *R kworker/u64:2[121] +0ms
+      scx_state/flags=3/0xd dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=10465680 slice=10000 weight=100
+      cpus=ffff no_mig=0
+
+    scx_dump_state+0x7d1/0xce0
+    scx_error_irq_workfn+0x24/0x40
+    irq_work_run+0x63/0xd0
+    __sysvec_irq_work+0x1f/0x30
+    sysvec_irq_work+0x4f/0x80
+    asm_sysvec_irq_work+0x1a/0x20
+    scx_watchdog_workfn+0x15d/0x1c0
+    process_scheduled_works+0x1f3/0x5e0
+    worker_thread+0x18d/0x340
+    kthread+0x205/0x280
+    ret_from_fork+0x118/0x260
+    ret_from_fork_asm+0x1a/0x30
+
+CPU 6   : nr_run=1 flags=0x1 cpu_rel=0 ops_qseq=619225 ksync=3609118
+          curr=code[5766] class=ext_sched_class
+
+ *R code[5766] +0ms
+      scx_state/flags=3/0xd dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=338370576 slice=24400 weight=244
+      cpus=ffff no_mig=0
+
+CPU 12  : nr_run=1 flags=0x1 cpu_rel=0 ops_qseq=663638 ksync=3651897
+          curr=Compositor[2902] class=ext_sched_class
+
+ *R Compositor[2902] +0ms
+      scx_state/flags=3/0xd dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=24906722 slice=59600 weight=596
+      cpus=ffff no_mig=1
+
+Event counters
+--------------
+              SCX_EV_SELECT_CPU_FALLBACK:                0
+       SCX_EV_DISPATCH_LOCAL_DSQ_OFFLINE:                0
+               SCX_EV_DISPATCH_KEEP_LAST:                0
+                 SCX_EV_ENQ_SKIP_EXITING:                0
+      SCX_EV_ENQ_SKIP_MIGRATION_DISABLED:                0
+                 SCX_EV_REFILL_SLICE_DFL:                0
+                  SCX_EV_BYPASS_DURATION:         27268771
+                  SCX_EV_BYPASS_DISPATCH:                0
+                  SCX_EV_BYPASS_ACTIVATE:                1
+
+================================================================================
+
+00:09:13 [0m[34m[INFO] [0mUnregister scx_cosmos scheduler
+Error: EXIT: runnable task stall (cyclictest[822914] failed to run for 6.552s)

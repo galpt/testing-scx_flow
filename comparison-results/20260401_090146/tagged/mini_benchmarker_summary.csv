@@ -1,3 +1,0 @@
-scheduler,runs,status,sched_ext_state,current_scheduler,latency_max_us,latency_spikes_over_100us,hackbench_mean_seconds,sysbench_events_per_sec,stressng_bogo_ops_per_sec,notes,log_paths
-scx_cosmos,1,completed,enabled,cosmos_1.1.0_gc505008f_x86_64_unknown_linux_gnu,1966.00,5412.00,0.740,,5556.80,,/home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/comparison-results/20260401_090146/logs/scx_cosmos_run1.log
-scx_flow,1,completed,enabled,scx_flow_1.0.0_x86_64_unknown_linux_gnu,637.00,63.00,0.655,,6096.62,,/home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/comparison-results/20260401_090146/logs/scx_flow_run1.log
