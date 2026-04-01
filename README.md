@@ -287,7 +287,25 @@ Expected:
 Use this when the broad benchmark looks good but you want a more adversarial
 latency-focused check before claiming the scheduler is review-ready.
 
-### 9. Run Scheduler Comparison
+### 9. Validate Hog Containment
+
+```bash
+sudo ./validate_containment_scx_flow.sh
+```
+
+Expected:
+
+- long-lived bursty workers first behave like budget-exhausting hogs and then
+  switch into a recovery phase
+- `hog_contain` should go non-zero if the `v2` containment path is alive
+- `hog_recover` should go non-zero if the same workers recover cleanly enough
+- the output also shows `exhaust`, `pos_wake`, and `latency_enq` so you can
+  tell whether the workload actually matched the trigger shape
+
+Use this when a broad stress run fails to prove whether the new `v2`
+containment logic is truly helping, truly dead, or just too conservative.
+
+### 10. Run Scheduler Comparison
 
 ```bash
 sudo ./mini_benchmarker.sh
@@ -308,7 +326,7 @@ If you only want `scx_cosmos` vs `scx_flow`:
 sudo ./mini_benchmarker.sh --schedulers "scx_cosmos scx_flow"
 ```
 
-### 10. Generate Review Bundle
+### 11. Generate Review Bundle
 
 ```bash
 ./prepare_review_bundle.sh \
@@ -394,6 +412,12 @@ Runs targeted wake-heavy and RT-pressure checks while capturing
 Runs short-lived task bursts while capturing `scx_flow --monitor` output so you
 can verify the task-creation and lifecycle-related hooks separately from the
 broad benchmark suite.
+
+### `validate_containment_scx_flow.sh`
+
+Runs long-lived burst workers that first accumulate budget exhaustions and then
+shift into a recovery phase, so you can confirm whether the `v2` hog
+containment and recovery counters actually move on your machine.
 
 ### `mini_benchmarker.sh`
 
