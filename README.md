@@ -34,7 +34,7 @@ cat /sys/kernel/sched_ext/state
 enabled
 
 cat /sys/kernel/sched_ext/root/ops
-scx_flow_1.0.0_x86_64_unknown_linux_gnu
+scx_flow_2.0.0_x86_64_unknown_linux_gnu
 ```
 
 And:
@@ -50,7 +50,7 @@ And:
 If `sudo ./benchmark.sh` prints:
 
 ```bash
-Current scheduler: scx_flow_1.0.0_x86_64_unknown_linux_gnu
+Current scheduler: scx_flow_2.0.0_x86_64_unknown_linux_gnu
 ```
 
 that is already a healthy scheduler signal. The benchmark step itself is a
@@ -125,7 +125,7 @@ On Arch/CachyOS, `hackbench` and `lmbench` may not exist as standalone official
 This pattern is common and should not be mistaken for a scheduler failure:
 
 ```bash
-Current scheduler: scx_flow_1.0.0_x86_64_unknown_linux_gnu
+Current scheduler: scx_flow_2.0.0_x86_64_unknown_linux_gnu
 ...
 cyclictest: command not found
 ```
@@ -490,6 +490,6 @@ current test window.
 
 - Active scheduler checks use `/sys/kernel/sched_ext/root/ops`.
 - Your kernel may report the active scheduler as a fully qualified name such as
-  `scx_flow_1.0.0_x86_64_unknown_linux_gnu`; that is still correct.
+  `scx_flow_2.0.0_x86_64_unknown_linux_gnu`; that is still correct.
 - `scx_flow` is currently experimental. Treat these scripts as validation tools,
   not proof of production readiness.

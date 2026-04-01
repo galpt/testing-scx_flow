@@ -16,7 +16,7 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RESULTS_DIR="$RESULTS_ROOT/$TIMESTAMP"
 KEEP_RESULTS=3
 RUNS=1
-SCHEDULERS=(baseline scx_cosmos scx_bpfland scx_flow)
+SCHEDULERS=(baseline scx_cosmos scx_bpfland scx_cake scx_flow)
 SUDO_KEEPALIVE_PID=""
 INITIAL_SERVICE_ACTIVE=0
 RESTORE_DONE=0
@@ -46,7 +46,7 @@ Options:
   --keep-results N          Keep only the newest N comparison result directories (default: 3)
   --results-dir DIR         Write this run into DIR instead of the default timestamped path
   --schedulers "LIST"       Space-separated scheduler list
-                            Default: "baseline scx_cosmos scx_bpfland scx_flow"
+                            Default: "baseline scx_cosmos scx_bpfland scx_cake scx_flow"
   -h, --help                Show this help
 
 Examples:
@@ -245,7 +245,7 @@ stop_all_schedulers() {
         run_privileged systemctl stop scx.service || true
     fi
 
-    for proc in scx_flow scx_cosmos scx_bpfland; do
+    for proc in scx_flow scx_cosmos scx_bpfland scx_cake; do
         if pgrep -x "$proc" >/dev/null 2>&1; then
             say "Stopping running $proc processes"
             run_privileged pkill -x "$proc" || true
@@ -255,6 +255,7 @@ stop_all_schedulers() {
     wait_for_scheduler_state flow inactive || true
     wait_for_scheduler_state cosmos inactive || true
     wait_for_scheduler_state bpfland inactive || true
+    wait_for_scheduler_state cake inactive || true
     wait_for_sched_ext_idle || true
 }
 
@@ -263,6 +264,7 @@ manual_scheduler_short_name() {
         scx_flow) printf 'flow\n' ;;
         scx_cosmos) printf 'cosmos\n' ;;
         scx_bpfland) printf 'bpfland\n' ;;
+        scx_cake) printf 'cake\n' ;;
         *)
             return 1
             ;;

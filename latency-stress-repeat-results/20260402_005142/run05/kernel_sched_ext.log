@@ -1,0 +1,3 @@
+Apr 02 00:55:07 galpt-laptop kernel: sched_ext: BPF scheduler "scx_flow_2.0.0_x86_64_unknown_linux_gnu" enabled
+Apr 02 00:55:53 galpt-laptop kernel: sched_ext: BPF scheduler "scx_flow_2.0.0_x86_64_unknown_linux_gnu" disabled (runnable task stall)
+Apr 02 00:55:53 galpt-laptop kernel: sched_ext: scx_flow_2.0.0_x86_64_unknown_linux_gnu: cyclictest[1652555] failed to run for 6.689s

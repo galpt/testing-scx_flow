@@ -1,3 +1,0 @@
-Apr 02 00:19:12 galpt-laptop kernel: sched_ext: BPF scheduler "bpfland_1.1.0_gc505008f_x86_64_unknown_linux_gnu" enabled
-Apr 02 00:19:58 galpt-laptop kernel: sched_ext: BPF scheduler "bpfland_1.1.0_gc505008f_x86_64_unknown_linux_gnu" disabled (runnable task stall)
-Apr 02 00:19:58 galpt-laptop kernel: sched_ext: bpfland_1.1.0_gc505008f_x86_64_unknown_linux_gnu: cyclictest[1150015] failed to run for 6.282s

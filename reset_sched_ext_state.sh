@@ -20,6 +20,7 @@ err()  { printf "${BLD}${RED}[ERROR ]${RST} %s\n" "$1" >&2; }
 
 ROOT_OPS_PATH="/sys/kernel/sched_ext/root/ops"
 WAIT_SECONDS=10
+TERM_WAIT_SECONDS=3
 
 usage() {
     cat <<EOF
@@ -76,10 +77,23 @@ stop_service_if_present() {
 
 stop_scheduler() {
     local scheduler="$1"
+    local i
 
     if pgrep -x "$scheduler" >/dev/null 2>&1; then
         say "Stopping leftover $scheduler process(es)"
         pkill -x "$scheduler" >/dev/null 2>&1 || true
+
+        for ((i = 0; i < TERM_WAIT_SECONDS; i++)); do
+            if ! pgrep -x "$scheduler" >/dev/null 2>&1; then
+                return
+            fi
+            sleep 1
+        done
+
+        if pgrep -x "$scheduler" >/dev/null 2>&1; then
+            warn "$scheduler did not exit after SIGTERM; forcing it down"
+            pkill -KILL -x "$scheduler" >/dev/null 2>&1 || true
+        fi
     fi
 }
 

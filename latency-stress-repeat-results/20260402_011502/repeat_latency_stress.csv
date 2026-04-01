@@ -1,0 +1,6 @@
+run,script_exit,overall_status,overall_note,post_state,mixed_max_us,mixed_spikes_100us,rt_max_us,rt_spikes_100us,disable_events,stall_events,reenable_events,failed_to_run_events,final_mode,summary_path
+run01,1,failed,runnable-task-stall-detected,disabled,160,12,7475940,46,1,1,1,1,latency,/home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/latency-stress-repeat-results/20260402_011502/run01/latency_stress_summary.env
+run02,1,failed,runnable-task-stall-detected,disabled,189,25,7383492,56,1,1,1,1,latency,/home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/latency-stress-repeat-results/20260402_011502/run02/latency_stress_summary.env
+run03,1,failed,runnable-task-stall-detected,disabled,245,23,7418266,58,1,1,1,1,latency,/home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/latency-stress-repeat-results/20260402_011502/run03/latency_stress_summary.env
+run04,1,failed,runnable-task-stall-detected,disabled,155,14,7425836,52,1,1,1,1,latency,/home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/latency-stress-repeat-results/20260402_011502/run04/latency_stress_summary.env
+run05,1,failed,runnable-task-stall-detected,disabled,215,20,7442757,43,1,1,1,1,latency,/home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/latency-stress-repeat-results/20260402_011502/run05/latency_stress_summary.env

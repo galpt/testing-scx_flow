@@ -26,6 +26,7 @@ COLOR_BY_SCHEDULER = {
     "baseline": "#4e79a7",
     "scx_cosmos": "#f28e2b",
     "scx_bpfland": "#59a14f",
+    "scx_cake": "#edc948",
     "scx_flow": "#e15759",
 }
 
@@ -83,9 +84,22 @@ def aggregate(rows: list[dict[str, str]]) -> list[dict[str, object]]:
             entry[metric_key] = statistics.fmean(values) if values else None
         aggregated.append(entry)
 
-    ordered = {name: index for index, name in enumerate(["baseline", "scx_cosmos", "scx_bpfland", "scx_flow"])}
+    ordered = {
+        name: index
+        for index, name in enumerate(["baseline", "scx_cosmos", "scx_bpfland", "scx_cake", "scx_flow"])
+    }
     aggregated.sort(key=lambda item: ordered.get(str(item["scheduler"]), 999))
     return aggregated
+
+
+def summarize_run_counts(aggregated: list[dict[str, object]]) -> str:
+    run_counts = sorted({int(entry["runs"]) for entry in aggregated if entry.get("runs") is not None})
+    if not run_counts:
+        return "Run count unavailable"
+    if len(run_counts) == 1:
+        run_label = "run" if run_counts[0] == 1 else "runs"
+        return f"Averages over {run_counts[0]} {run_label} per scheduler."
+    return "Runs per scheduler vary; see labels and report table."
 
 
 def sort_metric_entries(
@@ -174,11 +188,12 @@ def render_chart(out_dir: Path, aggregated: list[dict[str, object]]) -> tuple[Pa
                 va="center",
             )
 
+    run_count_summary = summarize_run_counts(aggregated)
     fig.suptitle("scx_flow Mini Benchmarker Comparison", fontsize=14, fontweight="bold")
     fig.text(
         0.5,
         0.955,
-        "Charts are auto-sorted from best to worst.",
+        f"{run_count_summary} Charts are auto-sorted from best to worst.",
         ha="center",
         va="top",
         fontsize=10,
@@ -195,10 +210,13 @@ def render_chart(out_dir: Path, aggregated: list[dict[str, object]]) -> tuple[Pa
 
 def write_report(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
     report_path = out_dir / "mini_benchmarker_report.md"
+    run_count_summary = summarize_run_counts(aggregated)
     lines = [
         "# Mini Benchmarker Report",
         "",
         "This report aggregates the latest comparison run across the selected schedulers.",
+        "",
+        f"Run count summary: {run_count_summary}",
         "",
         "| Scheduler | Runs | Status | sched_ext state | Current scheduler | Max latency (us) | Spikes >100us | Hackbench mean (s) | Sysbench events/s | Stress-ng bogo ops/s |",
         "| --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
