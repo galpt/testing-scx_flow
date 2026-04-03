@@ -425,6 +425,18 @@ Runs multi-scheduler comparisons using `benchmark.sh`, generates a CSV summary,
 PNG/SVG charts, and a Markdown report, and rotates old comparison result
 directories so only the latest three are kept by default.
 
+### `aquarium_benchmark.sh`
+
+Runs a single Aquarium + `stress-ng` benchmark against the current scheduler,
+using Playwright to sample frame timing, FPS, and jank directly from the
+WebGL Aquarium tab while the system is under load.
+
+### `aquarium_benchmarker.sh`
+
+Runs multi-scheduler comparisons using `aquarium_benchmark.sh`, generates a
+CSV summary, PNG/SVG charts, and a Markdown report, and rotates old Aquarium
+result directories so only the latest three are kept by default.
+
 ### `latency_stress_scx_flow.sh`
 
 Runs a targeted mixed-load and RT-interference latency check against the active
@@ -470,6 +482,11 @@ actually looks like a locality problem.
 Reads the summary env files written by `mini_benchmarker.sh` and renders the
 human-friendly comparison artifacts.
 
+### `aquarium_benchmarker_plot.py`
+
+Reads the summary env files written by `aquarium_benchmarker.sh` and renders
+the Aquarium comparison artifacts.
+
 ### `prepare_review_bundle.sh`
 
 Builds a compact review-facing Markdown summary from a comparison result
@@ -480,6 +497,11 @@ directory and optional validation logs.
 Installs the benchmark tools that are available from the local official package
 repositories and leaves unsupported optional tools to graceful fallback logic in
 `benchmark.sh`. It also installs `python-matplotlib` for chart generation.
+
+### `install_aquarium_benchmark_deps.sh`
+
+Installs the local npm dependency for browser automation and downloads the
+Playwright Chromium build used by the Aquarium benchmark scripts.
 
 ### `test_scx_flow.sh`
 

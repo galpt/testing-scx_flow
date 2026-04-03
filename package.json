@@ -1,0 +1,11 @@
+{
+  "name": "testing-scx-flow",
+  "private": true,
+  "description": "Auxiliary browser automation for scx_flow benchmark harnesses",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright": "^1.54.2"
+  }
+}
