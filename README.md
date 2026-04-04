@@ -3,6 +3,83 @@
 Helper scripts for installing, enabling, monitoring, benchmarking, and
 resetting `scx_flow` through the shared `scx.service` systemd unit.
 
+## How scx_flow Works
+
+`scx_flow` is a budget-based `sched_ext` scheduler with a small number of
+bounded service paths. In plain terms:
+
+- sleeping tasks build positive budget
+- short responsive wakeups can get faster service
+- heavy budget-exhausting tasks get pushed toward containment
+- shared fallback work still runs so the machine does not become unfair
+
+The current `v2.0.2` baseline also has a bounded direct-local front door for
+good short-sleeper wakeups. That gives `scx_flow` a cheaper locality fast path
+without making local dispatch the whole scheduler.
+
+Read the diagram like this:
+
+- start at the `Start` circle
+- follow arrows from top to bottom
+- normal rectangles are actions or scheduler steps
+- diamond shapes are yes/no decisions
+- arrow labels such as `Yes` and `No` tell you which branch to follow
+- the loop at the bottom means the task goes back to sleep and the cycle begins again
+
+```mermaid
+flowchart TD
+    Start((Start)) --> A[Task Sleeps]
+    A --> B[Budget Refill On Wake]
+    B --> C{Positive Budget?}
+
+    C -- No --> S[Shared Path]
+    C -- Yes --> D[Classify Wakeup]
+
+    D --> E{Contained Hog?}
+    E -- Yes --> F[Contained Path]
+    E -- No --> G{RT-Sensitive?}
+
+    G -- Yes --> H[Preempt + Tiny Local Slice]
+    G -- No --> I{Latency Candidate or Debt?}
+
+    I -- Yes --> J[Latency / Urgent Latency Path]
+    I -- No --> K{Direct-Local Candidate?}
+
+    K -- Yes --> L[Bounded Direct-Local Front Door]
+    K -- No --> M[Reserved Path]
+
+    H --> N[Dispatch Arbitration]
+    J --> N
+    L --> N
+    M --> N
+    F --> N
+    S --> N
+
+    N --> O[Task Runs]
+    O --> P{Exhausted Budget?}
+
+    P -- Yes --> Q[Raise Hog Score + Possible Latency Debt]
+    P -- No --> R[Good Short Sleep Raises Direct-Local Score]
+
+    Q --> EndCycle([Task Stops And Sleeps Again])
+    R --> EndCycle
+    EndCycle --> A
+```
+
+### Why This Matters
+
+- `scx_flow` is not a plain FIFO scheduler
+- it is not trying to be globally fair in one queue either
+- it tries to keep wakeups responsive while still bounding interference from
+  heavy tasks
+
+If you are reading benchmark output, this mental model helps:
+
+- strong latency numbers usually mean the bounded lanes are doing their job
+- strong FPS numbers usually mean the direct-local and reserved paths are
+  feeding short bursts well
+- bad regressions often mean tasks are being classified into the wrong path
+
 ## What You Should Care About
 
 When checking whether `scx_flow` is healthy, focus on these signals first:
