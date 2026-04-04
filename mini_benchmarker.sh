@@ -352,9 +352,23 @@ POST_RUN_CURRENT_SCHEDULER=$(current_sched_ext_ops)
 EOF
 }
 
-run_single_benchmark() {
+normalize_scheduler_name() {
     local scheduler="$1"
+
+    case "$scheduler" in
+        scx_baseline)
+            printf 'baseline\n'
+            ;;
+        *)
+            printf '%s\n' "$scheduler"
+            ;;
+    esac
+}
+
+run_single_benchmark() {
+    local scheduler
     local run_index="$2"
+    scheduler="$(normalize_scheduler_name "$1")"
     local log_file="$RESULTS_DIR/logs/${scheduler}_run${run_index}.log"
     local summary_file="$RESULTS_DIR/summaries/${scheduler}_run${run_index}.env"
     local label="${scheduler} run ${run_index}"
@@ -459,6 +473,9 @@ while [ "$#" -gt 0 ]; do
             ;;
         --schedulers)
             read -r -a SCHEDULERS <<< "$2"
+            for i in "${!SCHEDULERS[@]}"; do
+                SCHEDULERS[$i]="$(normalize_scheduler_name "${SCHEDULERS[$i]}")"
+            done
             shift 2
             ;;
         -h|--help)

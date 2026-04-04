@@ -1,7 +1,0 @@
-21:49:01 [INFO] scx_flow 2.0.0 x86_64-unknown-linux-gnu
-21:49:01 [INFO] Starting scx_flow scheduler
-21:49:05 [INFO] autotune=latency gen=1 reserve_cap=275us shared_slice=900us refill_floor=120us preempt_budget=175us preempt_refill=225us debt_min=1 urgent_burst_max=3 reserved_quota_max=4 reserved_lane_max=4 local_burst_max=4
-21:49:06 [INFO] autotune=latency gen=2 reserve_cap=300us shared_slice=900us refill_floor=140us preempt_budget=200us preempt_refill=250us debt_min=1 urgent_burst_max=3 reserved_quota_max=4 reserved_lane_max=4 local_burst_max=3
-21:49:07 [INFO] autotune=latency gen=3 reserve_cap=300us shared_slice=900us refill_floor=140us preempt_budget=225us preempt_refill=250us debt_min=1 urgent_burst_max=3 reserved_quota_max=4 reserved_lane_max=4 local_burst_max=3
-EXIT: unregistered from user space
-22:09:23 [INFO] Scheduler exited

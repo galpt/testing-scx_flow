@@ -16,6 +16,7 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RESULTS_DIR="$RESULTS_ROOT/$TIMESTAMP"
 KEEP_RESULTS=3
 RUNS=1
+WARMUP_RUNS=1
 FISH_COUNT=2000
 DURATION_SECONDS=45
 SETTLE_SECONDS=5
@@ -48,6 +49,8 @@ CSV/PNG/SVG outputs.
 
 Options:
   --runs N                  Number of benchmark runs per scheduler (default: 1)
+  --warmup-runs N           Number of uncounted warmup runs per scheduler (default: 1)
+  --no-warmup               Disable uncounted warmup runs
   --keep-results N          Keep only the newest N result directories (default: 3)
   --results-dir DIR         Write this run into DIR instead of the default timestamped path
   --schedulers "LIST"       Space-separated scheduler list
@@ -72,7 +75,25 @@ run_privileged() {
 run_as_benchmark_user() {
     if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
         local target_home
+        local target_path
         target_home="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+        target_path="$(sudo -iu "$SUDO_USER" /bin/bash -lc 'printf "%s" "$PATH"' 2>/dev/null || true)"
+        if [ -z "$target_path" ]; then
+            target_path="${target_home}/.local/bin:${target_home}/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+        else
+            case ":$target_path:" in
+                *:/usr/local/bin:*) ;;
+                *) target_path="${target_path}:/usr/local/bin" ;;
+            esac
+            case ":$target_path:" in
+                *:/usr/bin:*) ;;
+                *) target_path="${target_path}:/usr/bin" ;;
+            esac
+            case ":$target_path:" in
+                *:/bin:*) ;;
+                *) target_path="${target_path}:/bin" ;;
+            esac
+        fi
         sudo -u "$SUDO_USER" \
             env \
             DISPLAY="${DISPLAY:-}" \
@@ -80,7 +101,7 @@ run_as_benchmark_user() {
             XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-}" \
             XAUTHORITY="${XAUTHORITY:-}" \
             HOME="${target_home}" \
-            PATH="${PATH}" \
+            PATH="${target_path}" \
             "$@"
     else
         "$@"
@@ -172,6 +193,12 @@ fix_results_ownership() {
         return
     fi
     run_privileged chown -R "${SUDO_USER}:$(id -gn "$SUDO_USER")" "$RESULTS_DIR" >/dev/null 2>&1 || true
+}
+
+prepare_results_dirs() {
+    mkdir -p "$RESULTS_DIR/logs" "$RESULTS_DIR/summaries" \
+        "$RESULTS_DIR/warmups/logs" "$RESULTS_DIR/warmups/summaries"
+    fix_results_ownership
 }
 
 cleanup() {
@@ -318,29 +345,28 @@ EOF
 run_single_benchmark() {
     local scheduler="$1"
     local run_index="$2"
+    local phase="${3:-measured}"
     local log_file="$RESULTS_DIR/logs/${scheduler}_run${run_index}.log"
     local summary_file="$RESULTS_DIR/summaries/${scheduler}_run${run_index}.env"
     local label="${scheduler} run ${run_index}"
     local expected="$scheduler"
     local run_name="${scheduler}_run$(printf '%02d' "$run_index")"
 
+    if [ "$phase" = "warmup" ]; then
+        log_file="$RESULTS_DIR/warmups/logs/${scheduler}_warmup${run_index}.log"
+        summary_file="$RESULTS_DIR/warmups/summaries/${scheduler}_warmup${run_index}.env"
+        label="${scheduler} warmup ${run_index}"
+        run_name="${scheduler}_warmup$(printf '%02d' "$run_index")"
+    fi
+
     if [ "$scheduler" = "baseline" ]; then
         expected="none"
     fi
 
     if [ "$scheduler" != "baseline" ] && ! command -v "$scheduler" >/dev/null 2>&1; then
-        warn "Skipping $scheduler run $run_index because the binary is not installed"
+        warn "Skipping $scheduler $phase $run_index because the binary is not installed"
         write_skipped_summary "$summary_file" "$scheduler" "$run_index" "scheduler-binary-not-found"
         return 0
-    fi
-
-    stop_all_schedulers
-
-    if [ "$scheduler" != "baseline" ]; then
-        if ! start_scheduler_manual "$scheduler" "$run_name"; then
-            write_skipped_summary "$summary_file" "$scheduler" "$run_index" "scheduler-activation-timeout"
-            return 0
-        fi
     fi
 
     say "Running Aquarium benchmark for $label"
@@ -362,11 +388,21 @@ run_single_benchmark() {
     fi
 
     if run_as_benchmark_user "${bench_cmd[@]}"; then
-        write_summary_metadata "$summary_file" "$scheduler" "$run_index" "completed" ""
-        ok "Completed $label"
+        if [ "$phase" = "warmup" ]; then
+            write_summary_metadata "$summary_file" "$scheduler" "$run_index" "warmup" ""
+            ok "Completed $label (uncounted)"
+        else
+            write_summary_metadata "$summary_file" "$scheduler" "$run_index" "completed" ""
+            ok "Completed $label"
+        fi
     else
-        write_summary_metadata "$summary_file" "$scheduler" "$run_index" "failed" "aquarium-benchmark-exited-nonzero"
-        err "Aquarium benchmark failed for $label"
+        if [ "$phase" = "warmup" ]; then
+            write_summary_metadata "$summary_file" "$scheduler" "$run_index" "warmup-failed" "aquarium-benchmark-exited-nonzero"
+            warn "Warmup benchmark failed for $label"
+        else
+            write_summary_metadata "$summary_file" "$scheduler" "$run_index" "failed" "aquarium-benchmark-exited-nonzero"
+            err "Aquarium benchmark failed for $label"
+        fi
         return 0
     fi
 
@@ -376,8 +412,16 @@ run_single_benchmark() {
 render_outputs() {
     local tagged_dir="$RESULTS_DIR/tagged"
     mkdir -p "$tagged_dir"
+    cat > "$RESULTS_DIR/meta.env" <<EOF
+RUNS=${RUNS}
+WARMUP_RUNS=${WARMUP_RUNS}
+FISH_COUNT=${FISH_COUNT}
+DURATION_SECONDS=${DURATION_SECONDS}
+SETTLE_SECONDS=${SETTLE_SECONDS}
+EOF
     python3 "$PLOTTER_SCRIPT" \
         --summaries-dir "$RESULTS_DIR/summaries" \
+        --meta-file "$RESULTS_DIR/meta.env" \
         --output-dir "$tagged_dir"
 }
 
@@ -425,6 +469,14 @@ while [ "$#" -gt 0 ]; do
         --runs)
             RUNS="$2"
             shift 2
+            ;;
+        --warmup-runs)
+            WARMUP_RUNS="$2"
+            shift 2
+            ;;
+        --no-warmup)
+            WARMUP_RUNS=0
+            shift
             ;;
         --keep-results)
             KEEP_RESULTS="$2"
@@ -477,6 +529,13 @@ case "$RUNS" in
         ;;
 esac
 
+case "$WARMUP_RUNS" in
+    ''|*[!0-9]*)
+        err "--warmup-runs must be zero or a positive integer"
+        exit 1
+        ;;
+esac
+
 case "$KEEP_RESULTS" in
     ''|*[!0-9]*)
         err "--keep-results must be zero or a positive integer"
@@ -489,13 +548,32 @@ ensure_sudo_ready
 start_sudo_keepalive
 capture_initial_state
 
-mkdir -p "$RESULTS_DIR/logs" "$RESULTS_DIR/summaries"
+prepare_results_dirs
 
 say "Results directory: $RESULTS_DIR"
 say "Schedulers: ${SCHEDULERS[*]}"
 say "Fish count: $FISH_COUNT"
+say "Warmup runs per scheduler: $WARMUP_RUNS"
 
 for scheduler in "${SCHEDULERS[@]}"; do
+    stop_all_schedulers
+
+    if [ "$scheduler" != "baseline" ]; then
+        if ! start_scheduler_manual "$scheduler" "$scheduler"; then
+            for run_index in $(seq 1 "$RUNS"); do
+                write_skipped_summary "$RESULTS_DIR/summaries/${scheduler}_run${run_index}.env" \
+                    "$scheduler" "$run_index" "scheduler-activation-timeout"
+            done
+            continue
+        fi
+    fi
+
+    if [ "$WARMUP_RUNS" -gt 0 ]; then
+        for warmup_index in $(seq 1 "$WARMUP_RUNS"); do
+            run_single_benchmark "$scheduler" "$warmup_index" warmup
+        done
+    fi
+
     for run_index in $(seq 1 "$RUNS"); do
         run_single_benchmark "$scheduler" "$run_index"
     done

@@ -30,6 +30,10 @@ COLOR_BY_SCHEDULER = {
     "scx_flow": "#e15759",
 }
 
+SCHEDULER_ALIASES = {
+    "scx_baseline": "baseline",
+}
+
 
 def parse_env_file(path: Path) -> dict[str, str]:
     data: dict[str, str] = {}
@@ -58,20 +62,46 @@ def load_rows(summaries_dir: Path) -> list[dict[str, str]]:
     return rows
 
 
+def row_has_metrics(row: dict[str, str]) -> bool:
+    return any(as_float(row.get(metric_key)) is not None for metric_key, _, _ in METRICS)
+
+
+def prune_artifact_rows(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    if not any(row_has_metrics(item) for item in items):
+        return items
+
+    filtered = [
+        item
+        for item in items
+        if not (
+            item.get("COMPARE_STATUS") == "skipped"
+            and item.get("COMPARE_NOTE") == "scheduler-binary-not-found"
+            and not row_has_metrics(item)
+        )
+    ]
+    return filtered or items
+
+
 def aggregate(rows: list[dict[str, str]]) -> list[dict[str, object]]:
     grouped: dict[str, list[dict[str, str]]] = {}
     for row in rows:
         scheduler = row.get("SCHEDULER_UNDER_TEST") or row.get("EXPECTED_SCHEDULER") or "unknown"
+        scheduler = SCHEDULER_ALIASES.get(scheduler, scheduler)
         grouped.setdefault(scheduler, []).append(row)
 
     aggregated: list[dict[str, object]] = []
     for scheduler, items in grouped.items():
+        items = prune_artifact_rows(items)
+        representative = next(
+            (item for item in reversed(items) if item.get("COMPARE_STATUS") == "completed"),
+            items[-1],
+        )
         entry: dict[str, object] = {
             "scheduler": scheduler,
             "runs": len(items),
             "status": ", ".join(sorted({item.get("COMPARE_STATUS", "unknown") for item in items})),
-            "current_scheduler": items[-1].get("CURRENT_SCHEDULER", ""),
-            "sched_ext_state": items[-1].get("SCHED_EXT_STATE", ""),
+            "current_scheduler": representative.get("CURRENT_SCHEDULER", ""),
+            "sched_ext_state": representative.get("SCHED_EXT_STATE", ""),
             "notes": "; ".join(note for note in {item.get("COMPARE_NOTE", "") for item in items} if note),
             "log_paths": "; ".join(item.get("LOG_PATH", "") for item in items if item.get("LOG_PATH")),
         }

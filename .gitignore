@@ -7,3 +7,8 @@ node_modules/
 *~
 .DS_Store
 .pytest_cache/
+comparison-results/
+aquarium-comparison-results/
+aquarium-trace-results/
+latency-stress-results/
+latency-stress-repeat-results/

@@ -435,7 +435,17 @@ WebGL Aquarium tab while the system is under load.
 
 Runs multi-scheduler comparisons using `aquarium_benchmark.sh`, generates a
 CSV summary, PNG/SVG charts, and a Markdown report, and rotates old Aquarium
-result directories so only the latest three are kept by default.
+result directories so only the latest three are kept by default. By default it
+also performs one uncounted warmup run per scheduler before the measured runs
+so browser/WebGL warmup does not pollute the shared charts.
+
+### `aquarium_trace.sh`
+
+Switches to a chosen scheduler, runs one Aquarium benchmark under `perf sched`,
+captures `turbostat` when available, and writes a small Markdown trace report
+plus raw trace artifacts. Use this when Aquarium FPS looks wrong and you need
+evidence about run-time fragmentation or frequency behavior before changing
+`scx_flow`.
 
 ### `latency_stress_scx_flow.sh`
 

@@ -114,6 +114,25 @@ function roundMaybe(value, digits = 3) {
   return Number(value.toFixed(digits));
 }
 
+async function gotoAquarium(page, url) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await page.goto("about:blank", { waitUntil: "load", timeout: 15000 });
+      await page.goto(url, { waitUntil: "commit", timeout: 90000 });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) {
+        await page.waitForTimeout(3000 * attempt);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const pageUrl = new URL(args.url);
@@ -180,12 +199,17 @@ async function main() {
     }, 250);
   });
 
-  await page.goto(pageUrl.toString(), { waitUntil: "networkidle" });
-  await page.waitForSelector("#fps", { timeout: 30000 });
+  await gotoAquarium(page, pageUrl.toString());
+  await page.waitForFunction(() => {
+    const fpsElem = document.getElementById("fps");
+    const canvas = document.getElementById("canvas");
+    return Boolean(fpsElem || canvas);
+  }, { timeout: 90000 });
   await page.waitForFunction(() => {
     const fps = Number.parseFloat(document.querySelector("#fps")?.textContent || "");
-    return Number.isFinite(fps);
-  }, { timeout: 30000 });
+    const canvas = document.getElementById("canvas");
+    return Number.isFinite(fps) || Boolean(canvas && canvas.width > 0 && canvas.height > 0);
+  }, { timeout: 90000 });
 
   await page.waitForTimeout(args.settleSeconds * 1000);
   await page.evaluate(() => {

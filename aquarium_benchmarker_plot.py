@@ -42,6 +42,12 @@ def parse_env_file(path: Path) -> dict[str, str]:
     return data
 
 
+def load_meta_file(path: Path | None) -> dict[str, str]:
+    if path is None or not path.exists():
+        return {}
+    return parse_env_file(path)
+
+
 def as_float(value: str | None) -> float | None:
     if not value:
         return None
@@ -93,13 +99,22 @@ def aggregate(rows: list[dict[str, str]]) -> list[dict[str, object]]:
     return aggregated
 
 
-def summarize_run_counts(aggregated: list[dict[str, object]]) -> str:
+def summarize_run_counts(aggregated: list[dict[str, object]], meta: dict[str, str]) -> str:
     run_counts = sorted({int(entry["runs"]) for entry in aggregated if entry.get("runs") is not None})
+    warmup_runs = 0
+    try:
+        warmup_runs = int(meta.get("WARMUP_RUNS", "0") or "0")
+    except ValueError:
+        warmup_runs = 0
     if not run_counts:
         return "Run count unavailable"
     if len(run_counts) == 1:
         run_label = "run" if run_counts[0] == 1 else "runs"
-        return f"Averages over {run_counts[0]} {run_label} per scheduler."
+        summary = f"Averages over {run_counts[0]} {run_label} per scheduler."
+        if warmup_runs > 0:
+            warmup_label = "warmup run" if warmup_runs == 1 else "warmup runs"
+            summary += f" Each scheduler had {warmup_runs} uncounted {warmup_label} first."
+        return summary
     return "Runs per scheduler vary; see labels and report table."
 
 
@@ -155,7 +170,7 @@ def write_csv(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
     return csv_path
 
 
-def render_chart(out_dir: Path, aggregated: list[dict[str, object]]) -> tuple[Path, Path]:
+def render_chart(out_dir: Path, aggregated: list[dict[str, object]], meta: dict[str, str]) -> tuple[Path, Path]:
     active_metrics = [
         metric for metric in METRICS if any(entry.get(metric[0]) is not None for entry in aggregated)
     ]
@@ -188,7 +203,7 @@ def render_chart(out_dir: Path, aggregated: list[dict[str, object]]) -> tuple[Pa
                 va="center",
             )
 
-    run_count_summary = summarize_run_counts(aggregated)
+    run_count_summary = summarize_run_counts(aggregated, meta)
     fish_counts = sorted({str(entry.get("fish_count", "")).strip() for entry in aggregated if str(entry.get("fish_count", "")).strip()})
     fish_summary = f" Fish count: {', '.join(fish_counts)}." if fish_counts else ""
     fig.suptitle("scx_flow Aquarium Benchmarker Comparison", fontsize=14, fontweight="bold")
@@ -210,9 +225,9 @@ def render_chart(out_dir: Path, aggregated: list[dict[str, object]]) -> tuple[Pa
     return png_path, svg_path
 
 
-def write_report(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
+def write_report(out_dir: Path, aggregated: list[dict[str, object]], meta: dict[str, str]) -> Path:
     report_path = out_dir / "aquarium_benchmarker_report.md"
-    run_count_summary = summarize_run_counts(aggregated)
+    run_count_summary = summarize_run_counts(aggregated, meta)
     fish_counts = sorted({str(entry.get("fish_count", "")).strip() for entry in aggregated if str(entry.get("fish_count", "")).strip()})
     lines = [
         "# Aquarium Benchmarker Report",
@@ -265,14 +280,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--summaries-dir", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument("--meta-file", type=Path)
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     rows = load_rows(args.summaries_dir)
     aggregated = aggregate(rows)
+    meta = load_meta_file(args.meta_file)
     write_csv(args.output_dir, aggregated)
-    render_chart(args.output_dir, aggregated)
-    write_report(args.output_dir, aggregated)
+    render_chart(args.output_dir, aggregated, meta)
+    write_report(args.output_dir, aggregated, meta)
 
 
 if __name__ == "__main__":

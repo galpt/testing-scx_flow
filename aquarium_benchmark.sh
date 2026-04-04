@@ -70,12 +70,16 @@ EOF
 }
 
 is_expected_scheduler_match() {
+    local current="$1"
+    local expected_short=""
+
     case "$EXPECTED_SCHEDULER" in
         any) return 0 ;;
-        none) [ -z "$1" ] || [ "$1" = "none" ] || [ "$1" = "unknown" ] ;;
+        none) [ -z "$current" ] || [ "$current" = "none" ] || [ "$current" = "unknown" ] ;;
         *)
+            expected_short="${EXPECTED_SCHEDULER#scx_}"
             case "$1" in
-                "$EXPECTED_SCHEDULER"|"$EXPECTED_SCHEDULER"_*) return 0 ;;
+                "$EXPECTED_SCHEDULER"|"$EXPECTED_SCHEDULER"_*|"$expected_short"|"$expected_short"_*) return 0 ;;
                 *) return 1 ;;
             esac
             ;;
@@ -113,12 +117,6 @@ probe_dependency_check() {
     if ! have_cmd stress-ng; then
         log "${YELLOW}Missing:${NC} stress-ng"
         log "Run sudo ./install_benchmark_deps.sh first."
-        exit 1
-    fi
-
-    if ! node -e "require.resolve('playwright')" >/dev/null 2>&1; then
-        log "${YELLOW}Missing:${NC} Playwright npm dependency"
-        log "Run ./install_aquarium_benchmark_deps.sh first."
         exit 1
     fi
 
@@ -273,9 +271,11 @@ wait "$STRESS_PID" || true
 cat "$STRESS_LOG" >> "$BENCHMARK_LOG"
 
 STRESSNG_BOGO_OPS_PER_SEC=$(awk '
-/stress-ng: metrc:/ && ($4 == "cpu" || $4 == "iomix" || $4 == "vm") {
-    if ($9 ~ /^[0-9.]+$/)
-        sum += $9
+($1 == "cpu" || $1 == "iomix" || $1 == "vm") && $6 ~ /^[0-9.]+$/ {
+    sum += $6
+}
+/stress-ng: metrc:/ && ($4 == "cpu" || $4 == "iomix" || $4 == "vm") && $9 ~ /^[0-9.]+$/ {
+    sum += $9
 }
 END {
     if (sum > 0)
