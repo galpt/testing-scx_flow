@@ -199,7 +199,7 @@ On Arch/CachyOS, `hackbench` and `lmbench` may not exist as standalone official
 This pattern is common and should not be mistaken for a scheduler failure:
 
 ```bash
-Current scheduler: scx_flow_2.0.2_x86_64_unknown_linux_gnu
+Current scheduler: scx_flow_*
 ...
 cyclictest: command not found
 ```
