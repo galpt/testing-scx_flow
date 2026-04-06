@@ -36,6 +36,13 @@ have_cmd() {
     command -v "$1" >/dev/null 2>&1
 }
 
+scheduler_short_name() {
+    case "$1" in
+        scx_*) printf '%s\n' "${1#scx_}" ;;
+        *) printf '%s\n' "$1" ;;
+    esac
+}
+
 capture_scheduler_monitor_line() {
     local scheduler_bin="$1"
     local output=""
@@ -58,12 +65,16 @@ capture_scheduler_monitor_line() {
 }
 
 is_expected_scheduler_match() {
+    local current="$1"
+    local short_name=""
+
     case "$EXPECTED_SCHEDULER" in
         any) return 0 ;;
-        none) [ -z "$1" ] || [ "$1" = "none" ] || [ "$1" = "unknown" ] ;;
+        none) [ -z "$current" ] || [ "$current" = "none" ] || [ "$current" = "unknown" ] ;;
         *)
-            case "$1" in
-                "$EXPECTED_SCHEDULER"|"$EXPECTED_SCHEDULER"_*) return 0 ;;
+            short_name="$(scheduler_short_name "$EXPECTED_SCHEDULER")"
+            case "$current" in
+                "$EXPECTED_SCHEDULER"|"$EXPECTED_SCHEDULER"_*|"$short_name"|"$short_name"_*) return 0 ;;
                 *) return 1 ;;
             esac
             ;;

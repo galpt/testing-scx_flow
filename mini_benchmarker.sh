@@ -266,6 +266,7 @@ manual_scheduler_short_name() {
         scx_cosmos) printf 'cosmos\n' ;;
         scx_bpfland) printf 'bpfland\n' ;;
         scx_cake) printf 'cake\n' ;;
+        scx_pandemonium|pandemonium) printf 'pandemonium\n' ;;
         *)
             return 1
             ;;
@@ -359,6 +360,9 @@ normalize_scheduler_name() {
     case "$scheduler" in
         scx_baseline)
             printf 'baseline\n'
+            ;;
+        pandemonium)
+            printf 'scx_pandemonium\n'
             ;;
         *)
             printf '%s\n' "$scheduler"
