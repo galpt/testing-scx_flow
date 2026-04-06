@@ -89,7 +89,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--period-us", type=int, default=1_000)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--cpus", default="")
-    parser.add_argument("--late-threshold-us", type=int, default=1_000)
+    parser.add_argument("--late-threshold-us", type=int, default=500)
     parser.add_argument("--output-json", type=Path)
     return parser.parse_args()
 
@@ -113,6 +113,13 @@ def main() -> None:
     duration_ns = int(args.duration_seconds * 1_000_000_000)
     period_ns = args.period_us * 1_000
     late_threshold_ns = args.late_threshold_us * 1_000
+
+    if late_threshold_ns >= period_ns:
+        print(
+            "Warning: longrun late-threshold is greater than or equal to the probe period; "
+            "miss ratio and late-over-threshold ratio may collapse into the same metric.",
+            flush=True,
+        )
 
     queue: mp.Queue = mp.Queue()
     processes = [

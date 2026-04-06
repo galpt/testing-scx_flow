@@ -16,7 +16,7 @@ BENCHMARK_LABEL=""
 DURATION_SECONDS=60
 PERIOD_US=1000
 WORKERS=4
-LATE_THRESHOLD_US=1000
+LATE_THRESHOLD_US=500
 CPU_HOGS=""
 CPU_LOAD=85
 
@@ -129,6 +129,10 @@ fi
 
 if [ -z "$CPU_HOGS" ]; then
     CPU_HOGS="$WORKERS"
+fi
+
+if [ "$LATE_THRESHOLD_US" -ge "$PERIOD_US" ]; then
+    echo "Warning: --late-threshold-us (${LATE_THRESHOLD_US}) is >= --period-us (${PERIOD_US}); longrun miss ratio and late-over-threshold ratio may become identical." >&2
 fi
 
 mkdir -p "$(dirname "$BENCHMARK_LOG")"

@@ -494,6 +494,7 @@ Expected:
 - each scheduler gets its own raw log, env summary, and raw JSON probe output
 - a comparison CSV, PNG, SVG, and Markdown report are generated
 - the charts focus on long-run miss ratio, late-over-threshold ratio, and `p95/p99/max`
+- the default longrun soft threshold is intentionally lower than the probe period so miss ratio and late-over-threshold ratio do not collapse into the same metric
 - only the newest three longrun comparison result directories are kept automatically
 
 Use this when you specifically want a local equivalent of “Long-Run Latency P99 (us)”
