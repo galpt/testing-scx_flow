@@ -86,7 +86,17 @@ log() {
     printf '%s\n' "$1" | tee -a "$LOG_FILE"
 }
 
+is_baseline_scheduler() {
+    case "$SCHEDULER_NAME" in
+        baseline|none) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 start_monitor_capture() {
+    if is_baseline_scheduler; then
+        return
+    fi
     "$SCHEDULER_BIN" --monitor "$MONITOR_INTERVAL" >"$MONITOR_FILE" 2>/dev/null &
     MONITOR_PID="$!"
 }
@@ -173,22 +183,29 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-if [ -z "$SCHEDULER_BIN" ] || [ ! -x "$SCHEDULER_BIN" ]; then
+if ! is_baseline_scheduler && { [ -z "$SCHEDULER_BIN" ] || [ ! -x "$SCHEDULER_BIN" ]; }; then
     echo "Could not find executable scx_flow binary. Use --scheduler-bin PATH." >&2
     exit 1
 fi
 
 CURRENT_SCHED="$(cat /sys/kernel/sched_ext/root/ops 2>/dev/null || true)"
 CURRENT_STATE="$(cat /sys/kernel/sched_ext/state 2>/dev/null || echo "unknown")"
-if ! scheduler_matches_name "$CURRENT_SCHED" "$SCHEDULER_NAME"; then
-    echo "$SCHEDULER_NAME is not the active scheduler right now: ${CURRENT_SCHED:-none}" >&2
-    echo "Activate $SCHEDULER_NAME first, then rerun this validation." >&2
-    exit 1
-fi
+if is_baseline_scheduler; then
+    if [ "$CURRENT_STATE" != "disabled" ]; then
+        echo "Baseline mode expects sched_ext to be disabled right now: $CURRENT_STATE" >&2
+        exit 1
+    fi
+else
+    if ! scheduler_matches_name "$CURRENT_SCHED" "$SCHEDULER_NAME"; then
+        echo "$SCHEDULER_NAME is not the active scheduler right now: ${CURRENT_SCHED:-none}" >&2
+        echo "Activate $SCHEDULER_NAME first, then rerun this validation." >&2
+        exit 1
+    fi
 
-if [ "$CURRENT_STATE" != "enabled" ]; then
-    echo "sched_ext is not enabled right now: $CURRENT_STATE" >&2
-    exit 1
+    if [ "$CURRENT_STATE" != "enabled" ]; then
+        echo "sched_ext is not enabled right now: $CURRENT_STATE" >&2
+        exit 1
+    fi
 fi
 
 if ! have_cmd cyclictest; then
@@ -207,22 +224,50 @@ KERNEL_LOG_FILE="$RESULTS_DIR/kernel_sched_ext.log"
 
 parse_cyclictest_metrics() {
     local file="$1"
+    local sorted_samples
+    local count
+    local p95_rank
+    local p99_rank
+
+    sorted_samples="$(mktemp)"
 
     awk '
 /^[[:space:]]*[0-9]+:/ {
-    value = $NF + 0
-    if (value > max) {
-        max = value
-    }
+    print $NF + 0
+}
+' "$file" | sort -n >"$sorted_samples"
+
+    count="$(wc -l <"$sorted_samples")"
+    count="${count//[[:space:]]/}"
+    if [ -z "$count" ] || [ "$count" -eq 0 ]; then
+        rm -f "$sorted_samples"
+        printf '\n'
+        return
+    fi
+
+    p95_rank=$(((count * 95 + 99) / 100))
+    p99_rank=$(((count * 99 + 99) / 100))
+
+    awk -v p95_rank="$p95_rank" -v p99_rank="$p99_rank" '
+{
+    value = $1 + 0
+    max = value
     if (value > 100) {
         spikes++
     }
-    count++
+    if (NR == p95_rank) {
+        p95 = value
+    }
+    if (NR == p99_rank) {
+        p99 = value
+    }
 }
 END {
-    printf "%s %s %s\n", (count ? max : ""), (count ? spikes + 0 : ""), (count ? count : "")
+    printf "%s %s %s %s %s\n", max, spikes + 0, NR, p95, p99
 }
-' "$file"
+' "$sorted_samples"
+
+    rm -f "$sorted_samples"
 }
 
 max_counter_from_monitor() {
@@ -319,6 +364,7 @@ start_normal_hogs() {
 run_mixed_phase() {
     local tmpfile="$1"
     local wake_iters=$((MIXED_SECONDS * 500))
+    local mixed_timeout=$((MIXED_SECONDS + 15))
 
     log ""
     log ">>> Phase 1: mixed latency under CPU load, wake storms, and short-lived task churn"
@@ -332,15 +378,21 @@ run_mixed_phase() {
     run_fork_storm "$FORK_ROUNDS" "$FORK_WIDTH" &
     WORKLOAD_PIDS+=("$!")
 
-    cyclictest -D "$MIXED_SECONDS" -t "$MIXED_THREADS" -a "$MIXED_AFFINITY" -m -v 2>&1 \
-        | tee "$tmpfile" \
-        | tee -a "$LOG_FILE"
+    if have_cmd timeout; then
+        timeout --foreground "${mixed_timeout}s" \
+            cyclictest -D "$MIXED_SECONDS" -t "$MIXED_THREADS" -a "$MIXED_AFFINITY" -m -v 2>&1 \
+            | tee "$tmpfile" >>"$LOG_FILE"
+    else
+        cyclictest -D "$MIXED_SECONDS" -t "$MIXED_THREADS" -a "$MIXED_AFFINITY" -m -v 2>&1 \
+            | tee "$tmpfile" >>"$LOG_FILE"
+    fi
 
     wait_for_workloads
 }
 
 run_rt_phase() {
     local tmpfile="$1"
+    local rt_timeout=$((RT_SECONDS + RT_PRESSURE_SECONDS + 15))
 
     log ""
     log ">>> Phase 2: latency under RT interference on CPU${RT_CPU}"
@@ -349,15 +401,20 @@ run_rt_phase() {
         return 2
     fi
 
-    taskset -c "$RT_CPU" cyclictest -D "$RT_SECONDS" -t 1 -a "$RT_CPU" -m -v 2>&1 \
-        | tee "$tmpfile" \
-        | tee -a "$LOG_FILE" &
+    if have_cmd timeout; then
+        timeout --foreground "${rt_timeout}s" \
+            taskset -c "$RT_CPU" cyclictest -D "$RT_SECONDS" -t 1 -a "$RT_CPU" -m -v 2>&1 \
+            | tee "$tmpfile" >>"$LOG_FILE" &
+    else
+        taskset -c "$RT_CPU" cyclictest -D "$RT_SECONDS" -t 1 -a "$RT_CPU" -m -v 2>&1 \
+            | tee "$tmpfile" >>"$LOG_FILE" &
+    fi
     WORKLOAD_PIDS+=("$!")
 
     sleep 1
     log "Injecting a short FIFO RT hog without adding a pinned normal-task busy loop."
-    taskset -c "$RT_CPU" chrt -f 10 timeout "${RT_PRESSURE_SECONDS}s" \
-        bash -c 'while :; do :; done' >>"$LOG_FILE" 2>&1 || true
+    timeout --foreground --kill-after=1s "${RT_PRESSURE_SECONDS}s" \
+        taskset -c "$RT_CPU" chrt -f 10 bash -c 'while :; do :; done' >>"$LOG_FILE" 2>&1 || true
 
     wait_for_workloads
     return 0
@@ -381,9 +438,12 @@ EOF
 log "========================================"
 log "$SCHEDULER_NAME latency-stress validation"
 log "Started: $(date)"
-log "Scheduler: $CURRENT_SCHED"
+log "Kernel: $(uname -r)"
+log "Scheduler: ${CURRENT_SCHED:-none}"
 log "sched_ext state: $CURRENT_STATE"
-log "Binary: $SCHEDULER_BIN"
+if ! is_baseline_scheduler; then
+    log "Binary: $SCHEDULER_BIN"
+fi
 log "Results dir: $RESULTS_DIR"
 log "========================================"
 
@@ -398,7 +458,7 @@ MIXED_PHASE_STATUS="completed"
 RT_PHASE_STATUS="completed"
 
 run_mixed_phase "$MIXED_TMP" || MIXED_PHASE_STATUS="failed"
-read -r MIXED_LATENCY_MAX_US MIXED_SPIKES_OVER_100US MIXED_SAMPLES <<EOF
+read -r MIXED_LATENCY_MAX_US MIXED_SPIKES_OVER_100US MIXED_SAMPLES MIXED_LATENCY_P95_US MIXED_LATENCY_P99_US <<EOF
 $(parse_cyclictest_metrics "$MIXED_TMP")
 EOF
 
@@ -409,7 +469,7 @@ case "$RT_STATUS_CODE" in
     2) RT_PHASE_STATUS="skipped-missing-tools" ;;
     *) RT_PHASE_STATUS="failed" ;;
 esac
-read -r RT_LATENCY_MAX_US RT_SPIKES_OVER_100US RT_SAMPLES <<EOF
+read -r RT_LATENCY_MAX_US RT_SPIKES_OVER_100US RT_SAMPLES RT_LATENCY_P95_US RT_LATENCY_P99_US <<EOF
 $(parse_cyclictest_metrics "$RT_TMP")
 EOF
 
@@ -460,6 +520,7 @@ RESULTS_DIR=${RESULTS_DIR}
 LOG_PATH=${LOG_FILE}
 MONITOR_PATH=${MONITOR_FILE}
 KERNEL_LOG_PATH=${KERNEL_LOG_FILE}
+KERNEL_RELEASE=$(uname -r)
 SCHEDULER=${CURRENT_SCHED}
 EXPECTED_SCHEDULER=${SCHEDULER_NAME}
 PRE_RUN_SCHED_EXT_STATE=${CURRENT_STATE}
@@ -471,10 +532,14 @@ MIXED_PHASE_STATUS=${MIXED_PHASE_STATUS}
 MIXED_LATENCY_MAX_US=${MIXED_LATENCY_MAX_US}
 MIXED_SPIKES_OVER_100US=${MIXED_SPIKES_OVER_100US}
 MIXED_LATENCY_SAMPLES=${MIXED_SAMPLES}
+MIXED_LATENCY_P95_US=${MIXED_LATENCY_P95_US}
+MIXED_LATENCY_P99_US=${MIXED_LATENCY_P99_US}
 RT_PHASE_STATUS=${RT_PHASE_STATUS}
 RT_LATENCY_MAX_US=${RT_LATENCY_MAX_US}
 RT_SPIKES_OVER_100US=${RT_SPIKES_OVER_100US}
 RT_LATENCY_SAMPLES=${RT_SAMPLES}
+RT_LATENCY_P95_US=${RT_LATENCY_P95_US}
+RT_LATENCY_P99_US=${RT_LATENCY_P99_US}
 RUNNABLE_MAX=${RUNNABLE_MAX}
 CPU_RELEASE_MAX=${CPU_RELEASE_MAX}
 INIT_TASK_MAX=${INIT_TASK_MAX}
@@ -507,9 +572,13 @@ if [ -n "$OVERALL_NOTE" ]; then
 fi
 log "Mixed phase status: $MIXED_PHASE_STATUS"
 log "Mixed max latency: ${MIXED_LATENCY_MAX_US:-n/a}us"
+log "Mixed p95 latency: ${MIXED_LATENCY_P95_US:-n/a}us"
+log "Mixed p99 latency: ${MIXED_LATENCY_P99_US:-n/a}us"
 log "Mixed spikes >100us: ${MIXED_SPIKES_OVER_100US:-n/a}"
 log "RT phase status: $RT_PHASE_STATUS"
 log "RT max latency: ${RT_LATENCY_MAX_US:-n/a}us"
+log "RT p95 latency: ${RT_LATENCY_P95_US:-n/a}us"
+log "RT p99 latency: ${RT_LATENCY_P99_US:-n/a}us"
 log "RT spikes >100us: ${RT_SPIKES_OVER_100US:-n/a}"
 log "Kernel disable events: ${KERNEL_DISABLE_EVENTS:-0}"
 log "Kernel runnable-stall events: ${KERNEL_STALL_EVENTS:-0}"

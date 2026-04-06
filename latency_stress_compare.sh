@@ -9,6 +9,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STRESS_SCRIPT="$SCRIPT_DIR/latency_stress_scx_flow.sh"
+PLOT_SCRIPT="$SCRIPT_DIR/latency_stress_plot.py"
+RESET_SCRIPT="$SCRIPT_DIR/reset_sched_ext_state.sh"
 RESULTS_ROOT="$SCRIPT_DIR/latency-stress-comparisons"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RESULTS_DIR="$RESULTS_ROOT/$TIMESTAMP"
@@ -17,6 +19,8 @@ SCHEDULERS=(scx_cosmos scx_flow)
 CURRENT_RUNTIME_LOG=""
 INITIAL_SERVICE_ACTIVE=0
 RESTORE_DONE=0
+ARTIFACT_STEM="latency_stress_compare"
+REPORT_TITLE="Latency-Stress Comparison"
 
 usage() {
     cat <<EOF
@@ -24,8 +28,11 @@ Usage: sudo ./latency_stress_compare.sh [options]
 
 Options:
   --schedulers "LIST"       Space-separated scheduler list (default: "scx_cosmos scx_flow")
+  --results-root DIR        Root directory for timestamped results (default: latency-stress-comparisons/)
   --results-dir DIR         Write this run into DIR instead of the default timestamped path
   --keep-results N          Keep only the newest N result directories (default: 3)
+  --artifact-stem NAME      Output stem for CSV/PNG/SVG/report (default: latency_stress_compare)
+  --report-title TEXT       Report/chart title (default: "Latency-Stress Comparison")
   -h, --help                Show this help
 EOF
 }
@@ -97,7 +104,29 @@ wait_for_scheduler_state() {
     return 1
 }
 
+wait_for_sched_ext_disabled() {
+    local attempt=0
+
+    while [ "$attempt" -lt 60 ]; do
+        if [ "$(current_sched_ext_state)" = "disabled" ] &&
+           [ -z "$(current_sched_ext_ops)" ]; then
+            return 0
+        fi
+
+        attempt=$((attempt + 1))
+        sleep 0.5
+    done
+
+    return 1
+}
+
 stop_all_schedulers() {
+    if [ -x "$RESET_SCRIPT" ]; then
+        "$RESET_SCRIPT"
+        wait_for_sched_ext_disabled
+        return
+    fi
+
     if service_exists && systemctl is-active --quiet scx.service; then
         systemctl stop scx.service || true
     fi
@@ -105,13 +134,15 @@ stop_all_schedulers() {
     systemctl unset-environment SCX_SCHEDULER_OVERRIDE >/dev/null 2>&1 || true
     systemctl unset-environment SCX_FLAGS_OVERRIDE >/dev/null 2>&1 || true
 
-    for proc in scx_flow scx_cosmos scx_bpfland; do
+    for proc in scx_flow scx_cosmos scx_bpfland scx_pandemonium pandemonium; do
         pkill -x "$proc" >/dev/null 2>&1 || true
     done
 
     wait_for_scheduler_state flow inactive || true
     wait_for_scheduler_state cosmos inactive || true
     wait_for_scheduler_state bpfland inactive || true
+    wait_for_scheduler_state pandemonium inactive || true
+    wait_for_sched_ext_disabled || true
 }
 
 start_scheduler_manual() {
@@ -138,21 +169,46 @@ summary_field() {
     sed -n "s/^${key}=//p" "$path" | tail -n 1
 }
 
+display_scheduler_name() {
+    local scheduler="$1"
+    local summary="$2"
+    local kernel_release=""
+
+    if [ "$scheduler" = "baseline" ]; then
+        kernel_release="$(summary_field "$summary" KERNEL_RELEASE)"
+        if [ -n "$kernel_release" ]; then
+            printf 'baseline (%s)\n' "$kernel_release"
+            return
+        fi
+    fi
+
+    printf '%s\n' "$scheduler"
+}
+
 write_report() {
-    local report="$RESULTS_DIR/latency_stress_compare_report.md"
-    local csv="$RESULTS_DIR/latency_stress_compare_summary.csv"
-    local scheduler summary
+    local report="$RESULTS_DIR/${ARTIFACT_STEM}_report.md"
+    local csv="$RESULTS_DIR/${ARTIFACT_STEM}_summary.csv"
+    local png="$RESULTS_DIR/${ARTIFACT_STEM}.png"
+    local svg="$RESULTS_DIR/${ARTIFACT_STEM}.svg"
+    local scheduler summary display_name
 
     {
-        echo "scheduler,overall_status,overall_note,mixed_max_us,rt_max_us,kernel_stalls,summary_path"
+        echo "scheduler,display_scheduler,kernel_release,overall_status,overall_note,mixed_p95_us,mixed_p99_us,mixed_max_us,rt_p95_us,rt_p99_us,rt_max_us,kernel_stalls,summary_path"
         for scheduler in "${SCHEDULERS[@]}"; do
             summary="$RESULTS_DIR/runs/${scheduler}/latency_stress_summary.env"
             [ -f "$summary" ] || continue
-            printf '%s,%s,%s,%s,%s,%s,%s\n' \
+            display_name="$(display_scheduler_name "$scheduler" "$summary")"
+            printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
                 "$scheduler" \
+                "$display_name" \
+                "$(summary_field "$summary" KERNEL_RELEASE)" \
                 "$(summary_field "$summary" OVERALL_STATUS)" \
                 "$(summary_field "$summary" OVERALL_NOTE)" \
+                "$(summary_field "$summary" MIXED_LATENCY_P95_US)" \
+                "$(summary_field "$summary" MIXED_LATENCY_P99_US)" \
                 "$(summary_field "$summary" MIXED_LATENCY_MAX_US)" \
+                "$(summary_field "$summary" RT_LATENCY_P95_US)" \
+                "$(summary_field "$summary" RT_LATENCY_P99_US)" \
                 "$(summary_field "$summary" RT_LATENCY_MAX_US)" \
                 "$(summary_field "$summary" KERNEL_STALL_EVENTS)" \
                 "$summary"
@@ -160,20 +216,30 @@ write_report() {
     } >"$csv"
 
     {
-        echo "# Latency-Stress Comparison"
+        echo "# ${REPORT_TITLE}"
         echo
         echo "Generated: $(date)"
         echo
-        echo "| Scheduler | Overall status | Note | Mixed max (us) | RT max (us) | Kernel stall events |"
-        echo "| --- | --- | --- | ---: | ---: | ---: |"
+        echo "Artifacts:"
+        echo "- [$csv]($csv)"
+        echo "- [$png]($png)"
+        echo "- [$svg]($svg)"
+        echo
+        echo "| Scheduler | Overall status | Note | Mixed p95 (us) | Mixed p99 (us) | Mixed max (us) | RT p95 (us) | RT p99 (us) | RT max (us) | Kernel stall events |"
+        echo "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
         for scheduler in "${SCHEDULERS[@]}"; do
             summary="$RESULTS_DIR/runs/${scheduler}/latency_stress_summary.env"
             [ -f "$summary" ] || continue
-            printf '| %s | %s | %s | %s | %s | %s |\n' \
-                "$scheduler" \
+            display_name="$(display_scheduler_name "$scheduler" "$summary")"
+            printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+                "$display_name" \
                 "$(summary_field "$summary" OVERALL_STATUS)" \
                 "$(summary_field "$summary" OVERALL_NOTE)" \
+                "$(summary_field "$summary" MIXED_LATENCY_P95_US)" \
+                "$(summary_field "$summary" MIXED_LATENCY_P99_US)" \
                 "$(summary_field "$summary" MIXED_LATENCY_MAX_US)" \
+                "$(summary_field "$summary" RT_LATENCY_P95_US)" \
+                "$(summary_field "$summary" RT_LATENCY_P99_US)" \
                 "$(summary_field "$summary" RT_LATENCY_MAX_US)" \
                 "$(summary_field "$summary" KERNEL_STALL_EVENTS)"
         done
@@ -189,6 +255,24 @@ write_report() {
 
     echo "Report: $report"
     echo "CSV:    $csv"
+}
+
+render_charts() {
+    local csv="$RESULTS_DIR/${ARTIFACT_STEM}_summary.csv"
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "Skipping chart render: python3 not found"
+        return 0
+    fi
+
+    python3 "$PLOT_SCRIPT" \
+        --mode compare \
+        --csv "$csv" \
+        --output-dir "$RESULTS_DIR" \
+        --stem "$ARTIFACT_STEM" \
+        --figure-title "$REPORT_TITLE"
+    echo "PNG:    $RESULTS_DIR/${ARTIFACT_STEM}.png"
+    echo "SVG:    $RESULTS_DIR/${ARTIFACT_STEM}.svg"
 }
 
 prune_old_results() {
@@ -238,12 +322,25 @@ while [ "$#" -gt 0 ]; do
             read -r -a SCHEDULERS <<< "$2"
             shift 2
             ;;
+        --results-root)
+            RESULTS_ROOT="$2"
+            RESULTS_DIR="$RESULTS_ROOT/$TIMESTAMP"
+            shift 2
+            ;;
         --results-dir)
             RESULTS_DIR="$2"
             shift 2
             ;;
         --keep-results)
             KEEP_RESULTS="$2"
+            shift 2
+            ;;
+        --artifact-stem)
+            ARTIFACT_STEM="$2"
+            shift 2
+            ;;
+        --report-title)
+            REPORT_TITLE="$2"
             shift 2
             ;;
         -h|--help)
@@ -278,19 +375,29 @@ for scheduler in "${SCHEDULERS[@]}"; do
     echo "========================================"
 
     stop_all_schedulers
-    if ! start_scheduler_manual "$scheduler"; then
-        echo "Failed to activate $scheduler" >&2
-        continue
-    fi
+    if [ "$scheduler" = "baseline" ]; then
+        if ! "$STRESS_SCRIPT" \
+            --scheduler-name baseline \
+            --results-dir "$RESULTS_DIR/runs/$scheduler" \
+            --strict; then
+            echo "$scheduler latency-stress run exited non-zero; summary should still be available."
+        fi
+    else
+        if ! start_scheduler_manual "$scheduler"; then
+            echo "Failed to activate $scheduler" >&2
+            continue
+        fi
 
-    if ! "$STRESS_SCRIPT" \
-        --scheduler-name "$scheduler" \
-        --scheduler-bin "$(command -v "$scheduler")" \
-        --results-dir "$RESULTS_DIR/runs/$scheduler" \
-        --strict; then
-        echo "$scheduler latency-stress run exited non-zero; summary should still be available."
+        if ! "$STRESS_SCRIPT" \
+            --scheduler-name "$scheduler" \
+            --scheduler-bin "$(command -v "$scheduler")" \
+            --results-dir "$RESULTS_DIR/runs/$scheduler" \
+            --strict; then
+            echo "$scheduler latency-stress run exited non-zero; summary should still be available."
+        fi
     fi
 done
 
 write_report
+render_charts
 prune_old_results

@@ -3,7 +3,7 @@
 #
 # Copyright (c) 2026 Galih Tama <galpt@v.recipes>
 #
-"""Render CSV, PNG, SVG, and Markdown summaries from mini benchmark env files."""
+"""Render CSV, PNG, SVG, and Markdown summaries for burst benchmark env files."""
 
 from __future__ import annotations
 
@@ -15,11 +15,11 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 METRICS = [
-    ("LATENCY_MAX_US", "Cyclictest Max Latency (us)", "lower"),
-    ("LATENCY_SPIKES_OVER_100US", "Latency Spikes >100us", "lower"),
-    ("HACKBENCH_MEAN_SECONDS", "Hackbench Mean Time (s)", "lower"),
-    ("SYSBENCH_EVENTS_PER_SEC", "Sysbench Events/s", "higher"),
-    ("STRESSNG_BOGO_OPS_PER_SEC", "Stress-ng Bogo Ops/s", "higher"),
+    ("BURST_LATENCY_P95_US", "Burst p95 Lateness (us)", "lower"),
+    ("BURST_LATENCY_P99_US", "Burst p99 Lateness (us)", "lower"),
+    ("BURST_LATENCY_MAX_US", "Burst Max Lateness (us)", "lower"),
+    ("BURST_MISS_RATIO_PCT", "Burst Miss Ratio (%)", "lower"),
+    ("BURST_LATE_OVER_THRESHOLD_RATIO_PCT", "Burst Late Over Threshold Ratio (%)", "lower"),
 ]
 
 COLOR_BY_SCHEDULER = {
@@ -28,6 +28,7 @@ COLOR_BY_SCHEDULER = {
     "scx_bpfland": "#59a14f",
     "scx_cake": "#edc948",
     "scx_flow": "#e15759",
+    "scx_pandemonium": "#76b7b2",
 }
 
 SCHEDULER_ALIASES = {
@@ -55,31 +56,21 @@ def as_float(value: str | None) -> float | None:
         return None
 
 
+def format_metric_value(metric_key: str, value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    if metric_key in ("BURST_MISS_RATIO_PCT", "BURST_LATE_OVER_THRESHOLD_RATIO_PCT"):
+        if value < 0.01:
+            return f"{value:.4f}"
+        return f"{value:.3f}"
+    return f"{value:.2f}"
+
+
 def load_rows(summaries_dir: Path) -> list[dict[str, str]]:
     rows = [parse_env_file(path) for path in sorted(summaries_dir.glob("*.env"))]
     if not rows:
         raise SystemExit(f"No summary files found in {summaries_dir}")
     return rows
-
-
-def row_has_metrics(row: dict[str, str]) -> bool:
-    return any(as_float(row.get(metric_key)) is not None for metric_key, _, _ in METRICS)
-
-
-def prune_artifact_rows(items: list[dict[str, str]]) -> list[dict[str, str]]:
-    if not any(row_has_metrics(item) for item in items):
-        return items
-
-    filtered = [
-        item
-        for item in items
-        if not (
-            item.get("COMPARE_STATUS") == "skipped"
-            and item.get("COMPARE_NOTE") == "scheduler-binary-not-found"
-            and not row_has_metrics(item)
-        )
-    ]
-    return filtered or items
 
 
 def aggregate(rows: list[dict[str, str]]) -> list[dict[str, object]]:
@@ -91,7 +82,6 @@ def aggregate(rows: list[dict[str, str]]) -> list[dict[str, object]]:
 
     aggregated: list[dict[str, object]] = []
     for scheduler, items in grouped.items():
-        items = prune_artifact_rows(items)
         representative = next(
             (item for item in reversed(items) if item.get("COMPARE_STATUS") == "completed"),
             items[-1],
@@ -101,11 +91,16 @@ def aggregate(rows: list[dict[str, str]]) -> list[dict[str, object]]:
             "display_scheduler": scheduler,
             "runs": len(items),
             "status": ", ".join(sorted({item.get("COMPARE_STATUS", "unknown") for item in items})),
-            "current_scheduler": representative.get("CURRENT_SCHEDULER", ""),
             "sched_ext_state": representative.get("SCHED_EXT_STATE", ""),
+            "current_scheduler": representative.get("CURRENT_SCHEDULER", ""),
             "kernel_release": representative.get("KERNEL_RELEASE", ""),
+            "period_us": representative.get("BURST_PERIOD_US", ""),
+            "window_ms": representative.get("BURST_WINDOW_MS", ""),
+            "interval_ms": representative.get("BURST_INTERVAL_MS", ""),
+            "late_threshold_us": representative.get("BURST_LATE_THRESHOLD_US", ""),
             "notes": "; ".join(note for note in {item.get("COMPARE_NOTE", "") for item in items} if note),
             "log_paths": "; ".join(item.get("LOG_PATH", "") for item in items if item.get("LOG_PATH")),
+            "raw_json_paths": "; ".join(item.get("RAW_JSON_PATH", "") for item in items if item.get("RAW_JSON_PATH")),
         }
         if scheduler == "baseline" and entry["kernel_release"]:
             entry["display_scheduler"] = f"baseline ({entry['kernel_release']})"
@@ -116,11 +111,19 @@ def aggregate(rows: list[dict[str, str]]) -> list[dict[str, object]]:
                 if (parsed := as_float(item.get(metric_key))) is not None
             ]
             entry[metric_key] = statistics.fmean(values) if values else None
+        resolution_values = [
+            parsed
+            for item in items
+            if (parsed := as_float(item.get("BURST_MISS_RATIO_RESOLUTION_PCT"))) is not None
+        ]
+        entry["BURST_MISS_RATIO_RESOLUTION_PCT"] = (
+            statistics.fmean(resolution_values) if resolution_values else None
+        )
         aggregated.append(entry)
 
     ordered = {
         name: index
-        for index, name in enumerate(["baseline", "scx_cosmos", "scx_bpfland", "scx_cake", "scx_flow"])
+        for index, name in enumerate(["baseline", "scx_cosmos", "scx_bpfland", "scx_cake", "scx_flow", "scx_pandemonium"])
     }
     aggregated.sort(key=lambda item: ordered.get(str(item["scheduler"]), 999))
     return aggregated
@@ -136,9 +139,7 @@ def summarize_run_counts(aggregated: list[dict[str, object]]) -> str:
     return "Runs per scheduler vary; see labels and report table."
 
 
-def sort_metric_entries(
-    aggregated: list[dict[str, object]], metric_key: str, direction: str
-) -> list[dict[str, object]]:
+def sort_metric_entries(aggregated: list[dict[str, object]], metric_key: str, direction: str) -> list[dict[str, object]]:
     present = [entry for entry in aggregated if entry.get(metric_key) is not None]
     missing = [entry for entry in aggregated if entry.get(metric_key) is None]
     reverse = direction == "higher"
@@ -147,7 +148,7 @@ def sort_metric_entries(
 
 
 def write_csv(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
-    csv_path = out_dir / "mini_benchmarker_summary.csv"
+    csv_path = out_dir / "burst_benchmarker_summary.csv"
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(
@@ -159,13 +160,19 @@ def write_csv(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
                 "sched_ext_state",
                 "current_scheduler",
                 "kernel_release",
-                "latency_max_us",
-                "latency_spikes_over_100us",
-                "hackbench_mean_seconds",
-                "sysbench_events_per_sec",
-                "stressng_bogo_ops_per_sec",
+                "period_us",
+                "window_ms",
+                "interval_ms",
+                "late_threshold_us",
+                "burst_latency_p95_us",
+                "burst_latency_p99_us",
+                "burst_latency_max_us",
+                "burst_miss_ratio_pct",
+                "burst_miss_ratio_resolution_pct",
+                "burst_late_over_threshold_ratio_pct",
                 "notes",
                 "log_paths",
+                "raw_json_paths",
             ]
         )
         for entry in aggregated:
@@ -178,22 +185,26 @@ def write_csv(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
                     entry["sched_ext_state"],
                     entry["current_scheduler"],
                     entry["kernel_release"],
-                    "" if entry["LATENCY_MAX_US"] is None else f"{entry['LATENCY_MAX_US']:.2f}",
-                    "" if entry["LATENCY_SPIKES_OVER_100US"] is None else f"{entry['LATENCY_SPIKES_OVER_100US']:.2f}",
-                    "" if entry["HACKBENCH_MEAN_SECONDS"] is None else f"{entry['HACKBENCH_MEAN_SECONDS']:.3f}",
-                    "" if entry["SYSBENCH_EVENTS_PER_SEC"] is None else f"{entry['SYSBENCH_EVENTS_PER_SEC']:.2f}",
-                    "" if entry["STRESSNG_BOGO_OPS_PER_SEC"] is None else f"{entry['STRESSNG_BOGO_OPS_PER_SEC']:.2f}",
+                    entry["period_us"],
+                    entry["window_ms"],
+                    entry["interval_ms"],
+                    entry["late_threshold_us"],
+                    "" if entry["BURST_LATENCY_P95_US"] is None else f"{entry['BURST_LATENCY_P95_US']:.2f}",
+                    "" if entry["BURST_LATENCY_P99_US"] is None else f"{entry['BURST_LATENCY_P99_US']:.2f}",
+                    "" if entry["BURST_LATENCY_MAX_US"] is None else f"{entry['BURST_LATENCY_MAX_US']:.2f}",
+                    "" if entry["BURST_MISS_RATIO_PCT"] is None else f"{entry['BURST_MISS_RATIO_PCT']:.4f}",
+                    "" if entry.get("BURST_MISS_RATIO_RESOLUTION_PCT") is None else f"{entry['BURST_MISS_RATIO_RESOLUTION_PCT']:.4f}",
+                    "" if entry["BURST_LATE_OVER_THRESHOLD_RATIO_PCT"] is None else f"{entry['BURST_LATE_OVER_THRESHOLD_RATIO_PCT']:.4f}",
                     entry["notes"],
                     entry["log_paths"],
+                    entry["raw_json_paths"],
                 ]
             )
     return csv_path
 
 
 def render_chart(out_dir: Path, aggregated: list[dict[str, object]]) -> tuple[Path, Path]:
-    active_metrics = [
-        metric for metric in METRICS if any(entry.get(metric[0]) is not None for entry in aggregated)
-    ]
+    active_metrics = [metric for metric in METRICS if any(entry.get(metric[0]) is not None for entry in aggregated)]
     if not active_metrics:
         raise SystemExit("No numeric metrics were available to plot")
 
@@ -206,10 +217,7 @@ def render_chart(out_dir: Path, aggregated: list[dict[str, object]]) -> tuple[Pa
         labels = [str(entry["display_scheduler"]) for entry in ranked_entries]
         values = [entry.get(metric_key) for entry in ranked_entries]
         display_values = [0.0 if value is None else float(value) for value in values]
-        colors = [
-            COLOR_BY_SCHEDULER.get(str(entry["scheduler"]), "#76b7b2")
-            for entry in ranked_entries
-        ]
+        colors = [COLOR_BY_SCHEDULER.get(str(entry["scheduler"]), "#76b7b2") for entry in ranked_entries]
         bars = ax.barh(labels, display_values, color=colors)
         ax.set_title(f"{title} ({direction} is better)")
         ax.grid(axis="x", linestyle="--", alpha=0.3)
@@ -218,28 +226,26 @@ def render_chart(out_dir: Path, aggregated: list[dict[str, object]]) -> tuple[Pa
         if annotation_pad <= 0.0:
             annotation_pad = 0.05
         for bar, value in zip(bars, values):
-            label = "n/a" if value is None else f"{float(value):.2f}"
-            ax.text(
-                bar.get_width() + annotation_pad,
-                bar.get_y() + bar.get_height() / 2,
-                f"{label}",
-                va="center",
-            )
+            label = format_metric_value(metric_key, None if value is None else float(value))
+            ax.text(bar.get_width() + annotation_pad, bar.get_y() + bar.get_height() / 2, label, va="center")
 
     run_count_summary = summarize_run_counts(aggregated)
-    fig.suptitle("scx_flow Mini Benchmarker Comparison", fontsize=14, fontweight="bold")
+    period_us = next((str(entry.get("period_us", "")).strip() for entry in aggregated if str(entry.get("period_us", "")).strip()), "")
+    window_ms = next((str(entry.get("window_ms", "")).strip() for entry in aggregated if str(entry.get("window_ms", "")).strip()), "")
+    interval_ms = next((str(entry.get("interval_ms", "")).strip() for entry in aggregated if str(entry.get("interval_ms", "")).strip()), "")
+    fig.suptitle("Burst Benchmarker Comparison", fontsize=14, fontweight="bold")
     fig.text(
         0.5,
         0.955,
-        f"{run_count_summary} Charts are auto-sorted from best to worst.",
+        f"{run_count_summary} Probe period: {period_us}us. Burst window: {window_ms}ms every {interval_ms}ms.",
         ha="center",
         va="top",
         fontsize=10,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.94))
 
-    png_path = out_dir / "mini_benchmarker_comparison.png"
-    svg_path = out_dir / "mini_benchmarker_comparison.svg"
+    png_path = out_dir / "burst_benchmarker_comparison.png"
+    svg_path = out_dir / "burst_benchmarker_comparison.svg"
     fig.savefig(png_path, dpi=160)
     fig.savefig(svg_path)
     plt.close(fig)
@@ -247,31 +253,43 @@ def render_chart(out_dir: Path, aggregated: list[dict[str, object]]) -> tuple[Pa
 
 
 def write_report(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
-    report_path = out_dir / "mini_benchmarker_report.md"
+    report_path = out_dir / "burst_benchmarker_report.md"
     run_count_summary = summarize_run_counts(aggregated)
+    period_us = next((str(entry.get("period_us", "")).strip() for entry in aggregated if str(entry.get("period_us", "")).strip()), "")
+    window_ms = next((str(entry.get("window_ms", "")).strip() for entry in aggregated if str(entry.get("window_ms", "")).strip()), "")
+    interval_ms = next((str(entry.get("interval_ms", "")).strip() for entry in aggregated if str(entry.get("interval_ms", "")).strip()), "")
     lines = [
-        "# Mini Benchmarker Report",
+        "# Burst Benchmarker Report",
         "",
-        "This report aggregates the latest comparison run across the selected schedulers.",
+        "This report aggregates sudden load-spike tail latency probe runs across the selected schedulers.",
         "",
         f"Run count summary: {run_count_summary}",
-        "",
-        "| Scheduler | Runs | Status | sched_ext state | Current scheduler | Max latency (us) | Spikes >100us | Hackbench mean (s) | Sysbench events/s | Stress-ng bogo ops/s |",
-        "| --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
     ]
+    if period_us:
+        lines.append(f"Probe period: {period_us}us")
+    if window_ms and interval_ms:
+        lines.append(f"Burst window: {window_ms}ms every {interval_ms}ms")
+    lines.extend(
+        [
+            "",
+            "| Scheduler | Runs | Status | sched_ext state | Current scheduler | Burst p95 (us) | Burst p99 (us) | Burst max (us) | Burst miss ratio (%) | Miss resolution (%) | Burst late > threshold (%) |",
+            "| --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
     for entry in aggregated:
         lines.append(
-            "| {scheduler} | {runs} | {status} | {sched_ext_state} | {current_scheduler} | {latency} | {spikes} | {hackbench} | {sysbench} | {stressng} |".format(
+            "| {scheduler} | {runs} | {status} | {sched_ext_state} | {current_scheduler} | {p95} | {p99} | {max_late} | {miss_ratio} | {resolution} | {late_ratio} |".format(
                 scheduler=entry["display_scheduler"],
                 runs=entry["runs"],
                 status=entry["status"],
                 sched_ext_state=entry["sched_ext_state"] or "unknown",
                 current_scheduler=entry["current_scheduler"] or "none",
-                latency="n/a" if entry["LATENCY_MAX_US"] is None else f"{entry['LATENCY_MAX_US']:.2f}",
-                spikes="n/a" if entry["LATENCY_SPIKES_OVER_100US"] is None else f"{entry['LATENCY_SPIKES_OVER_100US']:.2f}",
-                hackbench="n/a" if entry["HACKBENCH_MEAN_SECONDS"] is None else f"{entry['HACKBENCH_MEAN_SECONDS']:.3f}",
-                sysbench="n/a" if entry["SYSBENCH_EVENTS_PER_SEC"] is None else f"{entry['SYSBENCH_EVENTS_PER_SEC']:.2f}",
-                stressng="n/a" if entry["STRESSNG_BOGO_OPS_PER_SEC"] is None else f"{entry['STRESSNG_BOGO_OPS_PER_SEC']:.2f}",
+                p95="n/a" if entry["BURST_LATENCY_P95_US"] is None else f"{entry['BURST_LATENCY_P95_US']:.2f}",
+                p99="n/a" if entry["BURST_LATENCY_P99_US"] is None else f"{entry['BURST_LATENCY_P99_US']:.2f}",
+                max_late="n/a" if entry["BURST_LATENCY_MAX_US"] is None else f"{entry['BURST_LATENCY_MAX_US']:.2f}",
+                miss_ratio="n/a" if entry["BURST_MISS_RATIO_PCT"] is None else f"{entry['BURST_MISS_RATIO_PCT']:.4f}",
+                resolution="n/a" if entry.get("BURST_MISS_RATIO_RESOLUTION_PCT") is None else f"{entry['BURST_MISS_RATIO_RESOLUTION_PCT']:.4f}",
+                late_ratio="n/a" if entry["BURST_LATE_OVER_THRESHOLD_RATIO_PCT"] is None else f"{entry['BURST_LATE_OVER_THRESHOLD_RATIO_PCT']:.4f}",
             )
         )
 
@@ -280,9 +298,11 @@ def write_report(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
             "",
             "## Notes",
             "",
-            "- Lower is better for latency and hackbench time.",
-            "- Higher is better for sysbench events/s and stress-ng bogo ops/s.",
-            "- Review the raw log paths from `mini_benchmarker_summary.csv` when a row shows `failed` or `skipped`.",
+            "- Lower is better for all burst-tail metrics.",
+            "- `Burst miss ratio` counts burst-window probe samples that woke later than a full probe period.",
+            "- `Miss resolution` is the smallest non-zero miss ratio this run can observe from its active burst sample count.",
+            "- `Burst late > threshold` is a softer tail signal using the configured lateness threshold.",
+            "- Review the raw log and JSON paths from `burst_benchmarker_summary.csv` when a row shows `failed` or `skipped`.",
         ]
     )
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

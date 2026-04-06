@@ -10,6 +10,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULTS_ROOT="$SCRIPT_DIR/latency-stress-repeat-results"
+PLOT_SCRIPT="$SCRIPT_DIR/latency_stress_plot.py"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RESULTS_DIR="$RESULTS_ROOT/$TIMESTAMP"
 RUNS=5
@@ -176,7 +177,7 @@ stop_all_schedulers() {
     systemctl unset-environment SCX_SCHEDULER_OVERRIDE >/dev/null 2>&1 || true
     systemctl unset-environment SCX_FLAGS_OVERRIDE >/dev/null 2>&1 || true
 
-    for proc in scx_flow scx_cosmos scx_bpfland scx_timely scx_cake; do
+    for proc in scx_flow scx_cosmos scx_bpfland scx_timely scx_cake scx_pandemonium pandemonium; do
         pkill -x "$proc" >/dev/null 2>&1 || true
     done
 
@@ -185,6 +186,7 @@ stop_all_schedulers() {
     wait_for_scheduler_state bpfland inactive || true
     wait_for_scheduler_state timely inactive || true
     wait_for_scheduler_state cake inactive || true
+    wait_for_scheduler_state pandemonium inactive || true
 }
 
 start_scheduler_manual() {
@@ -391,10 +393,12 @@ LOG_FILE="$RESULTS_DIR/repeat_latency_stress.log"
 CSV_FILE="$RESULTS_DIR/repeat_latency_stress.csv"
 REPORT_FILE="$RESULTS_DIR/repeat_latency_stress_report.md"
 SUMMARY_FILE="$RESULTS_DIR/repeat_latency_stress_summary.env"
+PNG_FILE="$RESULTS_DIR/repeat_latency_stress.png"
+SVG_FILE="$RESULTS_DIR/repeat_latency_stress.svg"
 : >"$LOG_FILE"
 
 cat >"$CSV_FILE" <<'EOF'
-run,script_exit,overall_status,overall_note,post_state,mixed_max_us,mixed_spikes_100us,rt_max_us,rt_spikes_100us,disable_events,stall_events,reenable_events,failed_to_run_events,final_mode,summary_path
+run,script_exit,overall_status,overall_note,post_state,mixed_p95_us,mixed_p99_us,mixed_max_us,mixed_spikes_100us,rt_p95_us,rt_p99_us,rt_max_us,rt_spikes_100us,disable_events,stall_events,reenable_events,failed_to_run_events,final_mode,summary_path
 EOF
 
 log "========================================"
@@ -444,9 +448,9 @@ for run in $(seq 1 "$RUNS"); do
     if [ ! -f "$summary_path" ]; then
         log ">>> $run_name: missing summary file at $summary_path"
         ANY_FAILED=1
-        printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
+        printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
             "$run_name" "$run_exit" "missing" "summary-missing" "" \
-            "0" "0" "0" "0" "0" "0" "0" "0" "" "$summary_path" >>"$CSV_FILE"
+            "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "" "$summary_path" >>"$CSV_FILE"
         continue
     fi
 
@@ -455,8 +459,12 @@ for run in $(seq 1 "$RUNS"); do
     . "$summary_path"
     RESULTS_DIR="$aggregate_results_dir"
 
+    mixed_p95="$(num_or_zero "${MIXED_LATENCY_P95_US:-}")"
+    mixed_p99="$(num_or_zero "${MIXED_LATENCY_P99_US:-}")"
     mixed_max="$(num_or_zero "${MIXED_LATENCY_MAX_US:-}")"
     mixed_spikes="$(num_or_zero "${MIXED_SPIKES_OVER_100US:-}")"
+    rt_p95="$(num_or_zero "${RT_LATENCY_P95_US:-}")"
+    rt_p99="$(num_or_zero "${RT_LATENCY_P99_US:-}")"
     rt_max="$(num_or_zero "${RT_LATENCY_MAX_US:-}")"
     rt_spikes="$(num_or_zero "${RT_SPIKES_OVER_100US:-}")"
     disable_events="$(num_or_zero "${KERNEL_DISABLE_EVENTS:-}")"
@@ -468,14 +476,18 @@ for run in $(seq 1 "$RUNS"); do
         ANY_FAILED=1
     fi
 
-    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
+    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
         "$run_name" \
         "$run_exit" \
         "${OVERALL_STATUS:-unknown}" \
         "${OVERALL_NOTE:-}" \
         "${POST_RUN_SCHED_EXT_STATE:-}" \
+        "$mixed_p95" \
+        "$mixed_p99" \
         "$mixed_max" \
         "$mixed_spikes" \
+        "$rt_p95" \
+        "$rt_p99" \
         "$rt_max" \
         "$rt_spikes" \
         "$disable_events" \
@@ -485,24 +497,40 @@ for run in $(seq 1 "$RUNS"); do
         "${FINAL_AUTOTUNE_MODE:-}" \
         "$summary_path" >>"$CSV_FILE"
 
-    log ">>> $run_name summary: mixed=${mixed_max}us spikes=${mixed_spikes}, rt=${rt_max}us spikes=${rt_spikes}, status=${OVERALL_STATUS:-unknown}, post_state=${POST_RUN_SCHED_EXT_STATE:-unknown}"
+    log ">>> $run_name summary: mixed p95=${mixed_p95}us p99=${mixed_p99}us max=${mixed_max}us spikes=${mixed_spikes}, rt p95=${rt_p95}us p99=${rt_p99}us max=${rt_max}us spikes=${rt_spikes}, status=${OVERALL_STATUS:-unknown}, post_state=${POST_RUN_SCHED_EXT_STATE:-unknown}"
 done
 
+tmp_mixed_p95="$(mktemp)"
+tmp_mixed_p99="$(mktemp)"
 tmp_mixed_max="$(mktemp)"
 tmp_mixed_spikes="$(mktemp)"
+tmp_rt_p95="$(mktemp)"
+tmp_rt_p99="$(mktemp)"
 tmp_rt_max="$(mktemp)"
 tmp_rt_spikes="$(mktemp)"
-trap 'rm -f "$tmp_mixed_max" "$tmp_mixed_spikes" "$tmp_rt_max" "$tmp_rt_spikes"; cleanup' EXIT INT TERM
+trap 'rm -f "$tmp_mixed_p95" "$tmp_mixed_p99" "$tmp_mixed_max" "$tmp_mixed_spikes" "$tmp_rt_p95" "$tmp_rt_p99" "$tmp_rt_max" "$tmp_rt_spikes"; cleanup' EXIT INT TERM
 
-awk -F',' 'NR > 1 { print $6 }' "$CSV_FILE" >"$tmp_mixed_max"
-awk -F',' 'NR > 1 { print $7 }' "$CSV_FILE" >"$tmp_mixed_spikes"
-awk -F',' 'NR > 1 { print $8 }' "$CSV_FILE" >"$tmp_rt_max"
-awk -F',' 'NR > 1 { print $9 }' "$CSV_FILE" >"$tmp_rt_spikes"
+awk -F',' 'NR > 1 { print $6 }' "$CSV_FILE" >"$tmp_mixed_p95"
+awk -F',' 'NR > 1 { print $7 }' "$CSV_FILE" >"$tmp_mixed_p99"
+awk -F',' 'NR > 1 { print $8 }' "$CSV_FILE" >"$tmp_mixed_max"
+awk -F',' 'NR > 1 { print $9 }' "$CSV_FILE" >"$tmp_mixed_spikes"
+awk -F',' 'NR > 1 { print $10 }' "$CSV_FILE" >"$tmp_rt_p95"
+awk -F',' 'NR > 1 { print $11 }' "$CSV_FILE" >"$tmp_rt_p99"
+awk -F',' 'NR > 1 { print $12 }' "$CSV_FILE" >"$tmp_rt_max"
+awk -F',' 'NR > 1 { print $13 }' "$CSV_FILE" >"$tmp_rt_spikes"
 
+MEDIAN_MIXED_P95_US="$(median_from_file "$tmp_mixed_p95")"
+WORST_MIXED_P95_US="$(max_from_file "$tmp_mixed_p95")"
+MEDIAN_MIXED_P99_US="$(median_from_file "$tmp_mixed_p99")"
+WORST_MIXED_P99_US="$(max_from_file "$tmp_mixed_p99")"
 MEDIAN_MIXED_MAX_US="$(median_from_file "$tmp_mixed_max")"
 WORST_MIXED_MAX_US="$(max_from_file "$tmp_mixed_max")"
 MEDIAN_MIXED_SPIKES_100US="$(median_from_file "$tmp_mixed_spikes")"
 WORST_MIXED_SPIKES_100US="$(max_from_file "$tmp_mixed_spikes")"
+MEDIAN_RT_P95_US="$(median_from_file "$tmp_rt_p95")"
+WORST_RT_P95_US="$(max_from_file "$tmp_rt_p95")"
+MEDIAN_RT_P99_US="$(median_from_file "$tmp_rt_p99")"
+WORST_RT_P99_US="$(max_from_file "$tmp_rt_p99")"
 MEDIAN_RT_MAX_US="$(median_from_file "$tmp_rt_max")"
 WORST_RT_MAX_US="$(max_from_file "$tmp_rt_max")"
 MEDIAN_RT_SPIKES_100US="$(median_from_file "$tmp_rt_spikes")"
@@ -527,10 +555,18 @@ STALL_EVENT_SUM=${STALL_EVENT_SUM}
 DISABLE_EVENT_SUM=${DISABLE_EVENT_SUM}
 REENABLE_EVENT_SUM=${REENABLE_EVENT_SUM}
 FAILED_TO_RUN_EVENT_SUM=${FAILED_TO_RUN_EVENT_SUM}
+MEDIAN_MIXED_P95_US=${MEDIAN_MIXED_P95_US}
+WORST_MIXED_P95_US=${WORST_MIXED_P95_US}
+MEDIAN_MIXED_P99_US=${MEDIAN_MIXED_P99_US}
+WORST_MIXED_P99_US=${WORST_MIXED_P99_US}
 MEDIAN_MIXED_MAX_US=${MEDIAN_MIXED_MAX_US}
 WORST_MIXED_MAX_US=${WORST_MIXED_MAX_US}
 MEDIAN_MIXED_SPIKES_100US=${MEDIAN_MIXED_SPIKES_100US}
 WORST_MIXED_SPIKES_100US=${WORST_MIXED_SPIKES_100US}
+MEDIAN_RT_P95_US=${MEDIAN_RT_P95_US}
+WORST_RT_P95_US=${WORST_RT_P95_US}
+MEDIAN_RT_P99_US=${MEDIAN_RT_P99_US}
+WORST_RT_P99_US=${WORST_RT_P99_US}
 MEDIAN_RT_MAX_US=${MEDIAN_RT_MAX_US}
 WORST_RT_MAX_US=${WORST_RT_MAX_US}
 MEDIAN_RT_SPIKES_100US=${MEDIAN_RT_SPIKES_100US}
@@ -560,26 +596,35 @@ instead of single-run noise.
 - Total re-enable events: ${REENABLE_EVENT_SUM}
 - Total failed-to-run events: ${FAILED_TO_RUN_EVENT_SUM}
 
+Artifacts:
+- [${CSV_FILE}](${CSV_FILE})
+- [${PNG_FILE}](${PNG_FILE})
+- [${SVG_FILE}](${SVG_FILE})
+
 ## Aggregates
 
 | Metric | Median | Worst |
 | --- | ---: | ---: |
+| Mixed p95 latency (us) | ${MEDIAN_MIXED_P95_US} | ${WORST_MIXED_P95_US} |
+| Mixed p99 latency (us) | ${MEDIAN_MIXED_P99_US} | ${WORST_MIXED_P99_US} |
 | Mixed max latency (us) | ${MEDIAN_MIXED_MAX_US} | ${WORST_MIXED_MAX_US} |
 | Mixed spikes >100us | ${MEDIAN_MIXED_SPIKES_100US} | ${WORST_MIXED_SPIKES_100US} |
+| RT p95 latency (us) | ${MEDIAN_RT_P95_US} | ${WORST_RT_P95_US} |
+| RT p99 latency (us) | ${MEDIAN_RT_P99_US} | ${WORST_RT_P99_US} |
 | RT max latency (us) | ${MEDIAN_RT_MAX_US} | ${WORST_RT_MAX_US} |
 | RT spikes >100us | ${MEDIAN_RT_SPIKES_100US} | ${WORST_RT_SPIKES_100US} |
 
 ## Per-Run Table
 
-| Run | Script exit | Overall status | Post state | Mixed max (us) | Mixed spikes >100us | RT max (us) | RT spikes >100us | Disable | Stall | Re-enable | Final mode |
-| --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Run | Script exit | Overall status | Post state | Mixed p95 (us) | Mixed p99 (us) | Mixed max (us) | Mixed spikes >100us | RT p95 (us) | RT p99 (us) | RT max (us) | RT spikes >100us | Disable | Stall | Re-enable | Final mode |
+| --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 EOF
 
 awk -F',' '
 NR == 1 { next }
 {
-    printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
-        $1, $2, $3, $5, $6, $7, $8, $9, $10, $11, $12, $14
+    printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+        $1, $2, $3, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $18
 }
 ' "$CSV_FILE" >>"$REPORT_FILE"
 
@@ -590,10 +635,18 @@ log "========================================"
 log "Scheduler: $SCHEDULER_NAME"
 log "Runs: $RUNS"
 log "Failed runs: $FAILED_RUNS"
+log "Median mixed p95 latency: ${MEDIAN_MIXED_P95_US}us"
+log "Worst mixed p95 latency: ${WORST_MIXED_P95_US}us"
+log "Median mixed p99 latency: ${MEDIAN_MIXED_P99_US}us"
+log "Worst mixed p99 latency: ${WORST_MIXED_P99_US}us"
 log "Median mixed max latency: ${MEDIAN_MIXED_MAX_US}us"
 log "Worst mixed max latency: ${WORST_MIXED_MAX_US}us"
 log "Median mixed spikes >100us: ${MEDIAN_MIXED_SPIKES_100US}"
 log "Worst mixed spikes >100us: ${WORST_MIXED_SPIKES_100US}"
+log "Median RT p95 latency: ${MEDIAN_RT_P95_US}us"
+log "Worst RT p95 latency: ${WORST_RT_P95_US}us"
+log "Median RT p99 latency: ${MEDIAN_RT_P99_US}us"
+log "Worst RT p99 latency: ${WORST_RT_P99_US}us"
 log "Median RT max latency: ${MEDIAN_RT_MAX_US}us"
 log "Worst RT max latency: ${WORST_RT_MAX_US}us"
 log "Median RT spikes >100us: ${MEDIAN_RT_SPIKES_100US}"
@@ -602,9 +655,17 @@ log "Summary file: $SUMMARY_FILE"
 log "CSV file: $CSV_FILE"
 log "Report file: $REPORT_FILE"
 
+if command -v python3 >/dev/null 2>&1; then
+    python3 "$PLOT_SCRIPT" --mode repeat --csv "$CSV_FILE" --output-dir "$RESULTS_DIR"
+    log "PNG file: $PNG_FILE"
+    log "SVG file: $SVG_FILE"
+else
+    log "Skipping chart render: python3 not found"
+fi
+
 prune_old_results
 
-rm -f "$tmp_mixed_max" "$tmp_mixed_spikes" "$tmp_rt_max" "$tmp_rt_spikes"
+rm -f "$tmp_mixed_p95" "$tmp_mixed_p99" "$tmp_mixed_max" "$tmp_mixed_spikes" "$tmp_rt_p95" "$tmp_rt_p99" "$tmp_rt_max" "$tmp_rt_spikes"
 trap cleanup EXIT INT TERM
 
 if [ "$ANY_FAILED" -ne 0 ]; then

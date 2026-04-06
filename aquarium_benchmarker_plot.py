@@ -74,14 +74,18 @@ def aggregate(rows: list[dict[str, str]]) -> list[dict[str, object]]:
     for scheduler, items in grouped.items():
         entry: dict[str, object] = {
             "scheduler": scheduler,
+            "display_scheduler": scheduler,
             "runs": len(items),
             "status": ", ".join(sorted({item.get("COMPARE_STATUS", "unknown") for item in items})),
             "current_scheduler": items[-1].get("CURRENT_SCHEDULER", ""),
             "sched_ext_state": items[-1].get("SCHED_EXT_STATE", ""),
+            "kernel_release": items[-1].get("KERNEL_RELEASE", ""),
             "fish_count": items[-1].get("AQUARIUM_FISH_COUNT", ""),
             "notes": "; ".join(note for note in {item.get("COMPARE_NOTE", "") for item in items} if note),
             "log_paths": "; ".join(item.get("LOG_PATH", "") for item in items if item.get("LOG_PATH")),
         }
+        if scheduler == "baseline" and entry["kernel_release"]:
+            entry["display_scheduler"] = f"baseline ({entry['kernel_release']})"
         for metric_key, _, _ in METRICS:
             values = [
                 parsed
@@ -135,10 +139,12 @@ def write_csv(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
         writer.writerow(
             [
                 "scheduler",
+                "display_scheduler",
                 "runs",
                 "status",
                 "sched_ext_state",
                 "current_scheduler",
+                "kernel_release",
                 "fish_count",
                 "aquarium_raf_avg_fps",
                 "aquarium_raf_1p_low_fps",
@@ -153,10 +159,12 @@ def write_csv(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
             writer.writerow(
                 [
                     entry["scheduler"],
+                    entry["display_scheduler"],
                     entry["runs"],
                     entry["status"],
                     entry["sched_ext_state"],
                     entry["current_scheduler"],
+                    entry["kernel_release"],
                     entry["fish_count"],
                     "" if entry["AQUARIUM_RAF_AVG_FPS"] is None else f"{entry['AQUARIUM_RAF_AVG_FPS']:.2f}",
                     "" if entry["AQUARIUM_RAF_1P_LOW_FPS"] is None else f"{entry['AQUARIUM_RAF_1P_LOW_FPS']:.2f}",
@@ -183,10 +191,10 @@ def render_chart(out_dir: Path, aggregated: list[dict[str, object]], meta: dict[
 
     for ax, (metric_key, title, direction) in zip(axes, active_metrics):
         ranked_entries = sort_metric_entries(aggregated, metric_key, direction)
-        labels = [str(entry["scheduler"]) for entry in ranked_entries]
+        labels = [str(entry["display_scheduler"]) for entry in ranked_entries]
         values = [entry.get(metric_key) for entry in ranked_entries]
         display_values = [0.0 if value is None else float(value) for value in values]
-        colors = [COLOR_BY_SCHEDULER.get(label, "#76b7b2") for label in labels]
+        colors = [COLOR_BY_SCHEDULER.get(str(entry["scheduler"]), "#76b7b2") for entry in ranked_entries]
         bars = ax.barh(labels, display_values, color=colors)
         ax.set_title(f"{title} ({direction} is better)")
         ax.grid(axis="x", linestyle="--", alpha=0.3)
@@ -248,7 +256,7 @@ def write_report(out_dir: Path, aggregated: list[dict[str, object]], meta: dict[
     for entry in aggregated:
         lines.append(
             "| {scheduler} | {runs} | {status} | {sched_ext_state} | {current_scheduler} | {avg_fps} | {low_fps} | {p95_ms} | {jank} | {stressng} |".format(
-                scheduler=entry["scheduler"],
+                scheduler=entry["display_scheduler"],
                 runs=entry["runs"],
                 status=entry["status"],
                 sched_ext_state=entry["sched_ext_state"] or "unknown",

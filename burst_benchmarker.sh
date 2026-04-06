@@ -3,20 +3,30 @@
 #
 # Copyright (c) 2026 Galih Tama <galpt@v.recipes>
 #
-# Compare scx_flow against baseline and other schedulers using benchmark.sh.
+# Compare schedulers using a sudden load-spike tail latency probe.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BENCHMARK_SCRIPT="$SCRIPT_DIR/benchmark.sh"
-PLOTTER_SCRIPT="$SCRIPT_DIR/mini_benchmarker_plot.py"
+BENCHMARK_SCRIPT="$SCRIPT_DIR/burst_benchmark.sh"
+PLOTTER_SCRIPT="$SCRIPT_DIR/burst_benchmarker_plot.py"
 RESET_SCRIPT="$SCRIPT_DIR/reset_sched_ext_state.sh"
-RESULTS_ROOT="$SCRIPT_DIR/comparison-results"
+RESULTS_ROOT="$SCRIPT_DIR/burst-comparison-results"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RESULTS_DIR="$RESULTS_ROOT/$TIMESTAMP"
 KEEP_RESULTS=3
 RUNS=1
-SCHEDULERS=(baseline scx_cosmos scx_bpfland scx_cake scx_flow)
+SCHEDULERS=(baseline scx_cosmos scx_bpfland scx_flow)
+DURATION_SECONDS=20
+DURATION_SET=0
+PERIOD_US=1000
+WORKERS=4
+LATE_THRESHOLD_US=1000
+SETTLE_SECONDS=2
+SETTLE_SET=0
+BURST_INTERVAL_MS=1000
+BURST_DURATION_MS=200
+STRICT_MODE=0
 SUDO_KEEPALIVE_PID=""
 INITIAL_SERVICE_ACTIVE=0
 RESTORE_DONE=0
@@ -25,34 +35,37 @@ CURRENT_RUNTIME_LOG=""
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-say()  { printf "${BOLD}${CYAN}[mini]${NC} %s\n" "$1"; }
+say()  { printf "${BOLD}${CYAN}[burst-mini]${NC} %s\n" "$1"; }
 ok()   { printf "${BOLD}${GREEN}[ ok ]${NC} %s\n" "$1"; }
 warn() { printf "${BOLD}${YELLOW}[warn]${NC} %s\n" "$1"; }
 err()  { printf "${BOLD}${RED}[err ]${NC} %s\n" "$1" >&2; }
 
 usage() {
     cat <<EOF
-Usage: ./mini_benchmarker.sh [options]
+Usage: ./burst_benchmarker.sh [options]
 
-Compare schedulers using benchmark.sh and generate CSV/PNG/SVG outputs.
+Compare schedulers using a burst-tail latency probe and generate CSV/PNG/SVG
+outputs.
 
 Options:
-  --runs N                  Number of full benchmark runs per scheduler (default: 1)
-  --keep-results N          Keep only the newest N comparison result directories (default: 3)
+  --runs N                  Number of benchmark runs per scheduler (default: 1)
+  --keep-results N          Keep only the newest N result directories (default: 3)
   --results-dir DIR         Write this run into DIR instead of the default timestamped path
   --schedulers "LIST"       Space-separated scheduler list
-                            Default: "baseline scx_cosmos scx_bpfland scx_cake scx_flow"
+                            Default: "baseline scx_cosmos scx_bpfland scx_flow"
+  --duration-seconds N      Benchmark duration (default: ${DURATION_SECONDS})
+  --strict                  Use the long-run strict preset from burst_benchmark.sh
+  --period-us N             Probe wake period in microseconds (default: ${PERIOD_US})
+  --workers N               Number of probe workers (default: ${WORKERS})
+  --late-threshold-us N     Soft lateness threshold in microseconds (default: ${LATE_THRESHOLD_US})
+  --settle-seconds N        Initial quiet period before bursts (default: ${SETTLE_SECONDS})
+  --burst-interval-ms N     Time between burst starts (default: ${BURST_INTERVAL_MS})
+  --burst-duration-ms N     Each burst duration (default: ${BURST_DURATION_MS})
   -h, --help                Show this help
-
-Examples:
-  sudo ./mini_benchmarker.sh
-  sudo ./mini_benchmarker.sh --schedulers "scx_cosmos scx_flow"
-  sudo ./mini_benchmarker.sh --runs 2 --keep-results 3
 EOF
 }
 
@@ -69,7 +82,7 @@ ensure_sudo_ready() {
         return
     fi
     command -v sudo >/dev/null 2>&1 || {
-        err "sudo is required to switch schedulers and run benchmarks."
+        err "sudo is required to switch schedulers and run the benchmark."
         exit 1
     }
     say "Refreshing sudo credentials"
@@ -105,24 +118,33 @@ current_sched_ext_ops() {
     cat /sys/kernel/sched_ext/root/ops 2>/dev/null || true
 }
 
-scheduler_is_active() {
-    local name="$1"
-    case "$(current_sched_ext_ops)" in
-        *"$name"*) return 0 ;;
+scheduler_short_name() {
+    case "$1" in
+        scx_*) printf '%s\n' "${1#scx_}" ;;
+        *) printf '%s\n' "$1" ;;
     esac
-    pgrep -x "scx_${name}" >/dev/null 2>&1
 }
 
-scheduler_is_attached() {
-    local name="$1"
-    case "$(current_sched_ext_ops)" in
-        *"$name"*)
-            [ "$(current_sched_ext_state)" = "enabled" ]
+scheduler_matches_name() {
+    local current="$1"
+    local expected="$2"
+    local short_name
+
+    short_name="$(scheduler_short_name "$expected")"
+    case "$current" in
+        "$expected"|"$expected"_*|"$short_name"|"$short_name"_*)
+            return 0
             ;;
         *)
             return 1
             ;;
     esac
+}
+
+scheduler_is_attached() {
+    local name="$1"
+    scheduler_matches_name "$(current_sched_ext_ops)" "$name" &&
+        [ "$(current_sched_ext_state)" = "enabled" ]
 }
 
 service_exists() {
@@ -148,15 +170,6 @@ capture_scheduler_diagnostics() {
         printf 'sched_ext_ops=%s\n' "$(current_sched_ext_ops)"
         printf '\n== systemctl status scx.service ==\n'
         run_privileged systemctl status scx.service --no-pager || true
-        printf '\n== systemctl show scx.service ==\n'
-        run_privileged systemctl show scx.service \
-            -p ActiveState \
-            -p SubState \
-            -p Result \
-            -p ExecMainStatus \
-            -p ExecMainCode \
-            -p ActiveEnterTimestamp \
-            || true
         printf '\n== journalctl -u scx.service ==\n'
         run_privileged journalctl -u scx.service -n 120 --no-pager || true
         printf '\n== journalctl -k ==\n'
@@ -205,7 +218,7 @@ wait_for_scheduler_state() {
         if [ "$want" = "active" ] && scheduler_is_attached "$expected"; then
             return 0
         fi
-        if [ "$want" = "inactive" ] && ! scheduler_is_attached "$expected" && ! pgrep -x "scx_${expected}" >/dev/null 2>&1; then
+        if [ "$want" = "inactive" ] && ! scheduler_is_attached "$expected" && ! pgrep -x "$expected" >/dev/null 2>&1; then
             return 0
         fi
 
@@ -213,18 +226,6 @@ wait_for_scheduler_state() {
         sleep 0.5
     done
 
-    return 1
-}
-
-wait_for_sched_ext_idle() {
-    local attempt=0
-    while [ "$attempt" -lt 20 ]; do
-        if [ -z "$(current_sched_ext_ops)" ]; then
-            return 0
-        fi
-        attempt=$((attempt + 1))
-        sleep 0.5
-    done
     return 1
 }
 
@@ -238,38 +239,8 @@ stop_all_schedulers() {
         return
     fi
 
-    warn "reset_sched_ext_state.sh not available; falling back to inline cleanup"
-
-    if service_exists && systemctl is-active --quiet scx.service; then
-        say "Stopping scx.service"
-        run_privileged systemctl stop scx.service || true
-    fi
-
-    for proc in scx_flow scx_cosmos scx_bpfland scx_cake scx_pandemonium pandemonium; do
-        if pgrep -x "$proc" >/dev/null 2>&1; then
-            say "Stopping running $proc processes"
-            run_privileged pkill -x "$proc" || true
-        fi
-    done
-
-    wait_for_scheduler_state flow inactive || true
-    wait_for_scheduler_state cosmos inactive || true
-    wait_for_scheduler_state bpfland inactive || true
-    wait_for_scheduler_state cake inactive || true
-    wait_for_scheduler_state pandemonium inactive || true
-    wait_for_sched_ext_idle || true
-}
-
-manual_scheduler_short_name() {
-    case "$1" in
-        scx_flow) printf 'flow\n' ;;
-        scx_cosmos) printf 'cosmos\n' ;;
-        scx_bpfland) printf 'bpfland\n' ;;
-        scx_cake) printf 'cake\n' ;;
-        *)
-            return 1
-            ;;
-    esac
+    err "Missing reset helper: $RESET_SCRIPT"
+    exit 1
 }
 
 scheduler_binary_path() {
@@ -279,16 +250,15 @@ scheduler_binary_path() {
 start_scheduler_manual() {
     local scheduler="$1"
     local run_name="$2"
-    local short_name=""
     local binary_path=""
     local runtime_log=""
 
-    short_name="$(manual_scheduler_short_name "$scheduler")"
     binary_path="$(scheduler_binary_path "$scheduler")"
     [ -n "$binary_path" ] || {
         err "Could not resolve binary path for $scheduler"
         return 1
     }
+
     runtime_log="$RESULTS_DIR/console/${scheduler}_${run_name}.log"
     CURRENT_RUNTIME_LOG="$runtime_log"
     mkdir -p "$RESULTS_DIR/console"
@@ -296,12 +266,9 @@ start_scheduler_manual() {
     say "Starting $scheduler directly"
     run_privileged env RUST_LOG=info "$binary_path" >"$runtime_log" 2>&1 &
 
-    if wait_for_scheduler_state "$short_name" active; then
+    if wait_for_scheduler_state "$scheduler" active; then
         ok "Scheduler state is ready for $scheduler"
     else
-        if grep -Fq "another sched_ext scheduler is already running" "$runtime_log" 2>/dev/null; then
-            err "$scheduler refused to start because another sched_ext scheduler was still active"
-        fi
         err "Timed out waiting for scheduler state: $scheduler"
         return 1
     fi
@@ -333,17 +300,39 @@ write_skipped_summary() {
     cat > "$summary_file" <<EOF
 BENCHMARK_LABEL=${scheduler} run ${run_index}
 EXPECTED_SCHEDULER=${scheduler}
+KERNEL_RELEASE=$(uname -r)
 SCHED_EXT_STATE=$(current_sched_ext_state)
 CURRENT_SCHEDULER=$(current_sched_ext_ops)
-LATENCY_MAX_US=
-LATENCY_SPIKES_OVER_100US=
-LATENCY_SAMPLES=
-THROUGHPUT_BENCHMARK=none
-HACKBENCH_MEAN_SECONDS=
-SYSBENCH_EVENTS_PER_SEC=
-SYSBENCH_AVG_LATENCY_MS=
-STRESSNG_BOGO_OPS_PER_SEC=
+BURST_DURATION_SECONDS=
+BURST_PERIOD_US=
+BURST_WORKERS=
+BURST_CPUS=
+BURST_BURNER_CPUS=
+BURST_SETTLE_SECONDS=
+BURST_INTERVAL_MS=
+BURST_WINDOW_MS=
+BURST_WINDOW_COUNT=
+BURST_LATE_THRESHOLD_US=
+BURST_TOTAL_SAMPLES=
+BURST_ACTIVE_SAMPLES=
+BURST_IDLE_SAMPLES=
+OVERALL_LATENCY_P95_US=
+OVERALL_LATENCY_P99_US=
+OVERALL_LATENCY_MAX_US=
+BURST_LATENCY_P95_US=
+BURST_LATENCY_P99_US=
+BURST_LATENCY_MAX_US=
+BURST_MEAN_LATE_US=
+BURST_MISS_COUNT=
+BURST_MISS_RATIO_PCT=
+BURST_MISS_RATIO_RESOLUTION_PCT=
+BURST_LATE_OVER_THRESHOLD_COUNT=
+BURST_LATE_OVER_THRESHOLD_RATIO_PCT=
+IDLE_LATENCY_P95_US=
+IDLE_LATENCY_P99_US=
+IDLE_LATENCY_MAX_US=
 LOG_PATH=
+RAW_JSON_PATH=
 SCHEDULER_UNDER_TEST=${scheduler}
 RUN_INDEX=${run_index}
 COMPARE_STATUS=skipped
@@ -353,28 +342,15 @@ POST_RUN_CURRENT_SCHEDULER=$(current_sched_ext_ops)
 EOF
 }
 
-normalize_scheduler_name() {
-    local scheduler="$1"
-
-    case "$scheduler" in
-        scx_baseline)
-            printf 'baseline\n'
-            ;;
-        *)
-            printf '%s\n' "$scheduler"
-            ;;
-    esac
-}
-
 run_single_benchmark() {
-    local scheduler
+    local scheduler="$1"
     local run_index="$2"
-    scheduler="$(normalize_scheduler_name "$1")"
     local log_file="$RESULTS_DIR/logs/${scheduler}_run${run_index}.log"
     local summary_file="$RESULTS_DIR/summaries/${scheduler}_run${run_index}.env"
     local label="${scheduler} run ${run_index}"
     local expected="$scheduler"
     local run_name="${scheduler}_run$(printf '%02d' "$run_index")"
+    local -a cmd
 
     if [ "$scheduler" = "baseline" ]; then
         expected="none"
@@ -397,12 +373,30 @@ run_single_benchmark() {
         fi
     fi
 
-    say "Running benchmark for $label"
-    if run_privileged "$BENCHMARK_SCRIPT" \
-        --log-file "$log_file" \
-        --summary-file "$summary_file" \
-        --expected-scheduler "$expected" \
-        --label "$label"; then
+    say "Running burst benchmark for $label"
+    cmd=(
+        "$BENCHMARK_SCRIPT"
+        --log-file "$log_file"
+        --summary-file "$summary_file"
+        --expected-scheduler "$expected"
+        --label "$label"
+        --period-us "$PERIOD_US"
+        --workers "$WORKERS"
+        --late-threshold-us "$LATE_THRESHOLD_US"
+        --burst-interval-ms "$BURST_INTERVAL_MS"
+        --burst-duration-ms "$BURST_DURATION_MS"
+    )
+    if [ "$STRICT_MODE" -eq 1 ]; then
+        cmd+=(--strict)
+    fi
+    if [ "$STRICT_MODE" -eq 0 ] || [ "$DURATION_SET" -eq 1 ]; then
+        cmd+=(--duration-seconds "$DURATION_SECONDS")
+    fi
+    if [ "$STRICT_MODE" -eq 0 ] || [ "$SETTLE_SET" -eq 1 ]; then
+        cmd+=(--settle-seconds "$SETTLE_SECONDS")
+    fi
+
+    if run_privileged "${cmd[@]}"; then
         write_summary_metadata "$summary_file" "$scheduler" "$run_index" "completed" ""
         ok "Completed $label"
     else
@@ -411,8 +405,6 @@ run_single_benchmark() {
         err "Benchmark failed for $label"
         return 0
     fi
-
-    return 0
 }
 
 render_outputs() {
@@ -430,7 +422,7 @@ prune_old_results() {
     old_dirs=$(ls -1dt "$RESULTS_ROOT"/* 2>/dev/null | tail -n +"$((KEEP_RESULTS + 1))" || true)
     [ -n "$old_dirs" ] || return 0
 
-    warn "Pruning old comparison result directories, keeping the newest ${KEEP_RESULTS}"
+    warn "Pruning old burst result directories, keeping the newest ${KEEP_RESULTS}"
     while IFS= read -r old_dir; do
         [ -n "$old_dir" ] || continue
         rm -rf "$old_dir"
@@ -441,7 +433,7 @@ EOF
 
 require_prereqs() {
     [ -x "$BENCHMARK_SCRIPT" ] || {
-        err "Missing benchmark script: $BENCHMARK_SCRIPT"
+        err "Missing burst benchmark script: $BENCHMARK_SCRIPT"
         exit 1
     }
     [ -f "$PLOTTER_SCRIPT" ] || {
@@ -474,9 +466,40 @@ while [ "$#" -gt 0 ]; do
             ;;
         --schedulers)
             read -r -a SCHEDULERS <<< "$2"
-            for i in "${!SCHEDULERS[@]}"; do
-                SCHEDULERS[$i]="$(normalize_scheduler_name "${SCHEDULERS[$i]}")"
-            done
+            shift 2
+            ;;
+        --duration-seconds)
+            DURATION_SECONDS="$2"
+            DURATION_SET=1
+            shift 2
+            ;;
+        --strict)
+            STRICT_MODE=1
+            shift
+            ;;
+        --period-us)
+            PERIOD_US="$2"
+            shift 2
+            ;;
+        --workers)
+            WORKERS="$2"
+            shift 2
+            ;;
+        --late-threshold-us)
+            LATE_THRESHOLD_US="$2"
+            shift 2
+            ;;
+        --settle-seconds)
+            SETTLE_SECONDS="$2"
+            SETTLE_SET=1
+            shift 2
+            ;;
+        --burst-interval-ms)
+            BURST_INTERVAL_MS="$2"
+            shift 2
+            ;;
+        --burst-duration-ms)
+            BURST_DURATION_MS="$2"
             shift 2
             ;;
         -h|--help)
@@ -490,20 +513,6 @@ while [ "$#" -gt 0 ]; do
             ;;
     esac
 done
-
-case "$RUNS" in
-    ''|*[!0-9]*|0)
-        err "--runs must be a positive integer"
-        exit 1
-        ;;
-esac
-
-case "$KEEP_RESULTS" in
-    ''|*[!0-9]*)
-        err "--keep-results must be zero or a positive integer"
-        exit 1
-        ;;
-esac
 
 require_prereqs
 ensure_sudo_ready
@@ -521,17 +530,8 @@ for scheduler in "${SCHEDULERS[@]}"; do
     done
 done
 
-restore_default_service_state
 render_outputs
-fix_results_ownership
+prune_old_results
 
-if [ "$KEEP_RESULTS" -gt 0 ]; then
-    prune_old_results
-fi
-
-ok "Comparison run complete"
-say "Results: $RESULTS_DIR"
-say "CSV   : $RESULTS_DIR/tagged/mini_benchmarker_summary.csv"
-say "PNG   : $RESULTS_DIR/tagged/mini_benchmarker_comparison.png"
-say "SVG   : $RESULTS_DIR/tagged/mini_benchmarker_comparison.svg"
-say "Report: $RESULTS_DIR/tagged/mini_benchmarker_report.md"
+ok "Burst benchmark comparison complete"
+say "CSV/PNG/SVG/report written to: $RESULTS_DIR/tagged"

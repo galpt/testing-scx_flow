@@ -3,20 +3,26 @@
 #
 # Copyright (c) 2026 Galih Tama <galpt@v.recipes>
 #
-# Compare scx_flow against baseline and other schedulers using benchmark.sh.
+# Compare schedulers using an IPC round-trip ping-pong benchmark.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BENCHMARK_SCRIPT="$SCRIPT_DIR/benchmark.sh"
-PLOTTER_SCRIPT="$SCRIPT_DIR/mini_benchmarker_plot.py"
+BENCHMARK_SCRIPT="$SCRIPT_DIR/ipc_benchmark.sh"
+PLOTTER_SCRIPT="$SCRIPT_DIR/ipc_benchmarker_plot.py"
 RESET_SCRIPT="$SCRIPT_DIR/reset_sched_ext_state.sh"
-RESULTS_ROOT="$SCRIPT_DIR/comparison-results"
+RESULTS_ROOT="$SCRIPT_DIR/ipc-comparison-results"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RESULTS_DIR="$RESULTS_ROOT/$TIMESTAMP"
 KEEP_RESULTS=3
 RUNS=1
-SCHEDULERS=(baseline scx_cosmos scx_bpfland scx_cake scx_flow)
+SCHEDULERS=(baseline scx_cosmos scx_bpfland scx_flow)
+DURATION_SECONDS=20
+WORKERS=2
+MESSAGE_BYTES=64
+LATE_THRESHOLD_US=500
+CPU_HOGS=""
+CPU_LOAD=85
 SUDO_KEEPALIVE_PID=""
 INITIAL_SERVICE_ACTIVE=0
 RESTORE_DONE=0
@@ -25,34 +31,35 @@ CURRENT_RUNTIME_LOG=""
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-say()  { printf "${BOLD}${CYAN}[mini]${NC} %s\n" "$1"; }
+say()  { printf "${BOLD}${CYAN}[ipc-mini]${NC} %s\n" "$1"; }
 ok()   { printf "${BOLD}${GREEN}[ ok ]${NC} %s\n" "$1"; }
 warn() { printf "${BOLD}${YELLOW}[warn]${NC} %s\n" "$1"; }
 err()  { printf "${BOLD}${RED}[err ]${NC} %s\n" "$1" >&2; }
 
 usage() {
     cat <<EOF
-Usage: ./mini_benchmarker.sh [options]
+Usage: ./ipc_benchmarker.sh [options]
 
-Compare schedulers using benchmark.sh and generate CSV/PNG/SVG outputs.
+Compare schedulers using an IPC round-trip ping-pong benchmark and generate
+CSV/PNG/SVG outputs.
 
 Options:
-  --runs N                  Number of full benchmark runs per scheduler (default: 1)
-  --keep-results N          Keep only the newest N comparison result directories (default: 3)
+  --runs N                  Number of benchmark runs per scheduler (default: 1)
+  --keep-results N          Keep only the newest N result directories (default: 3)
   --results-dir DIR         Write this run into DIR instead of the default timestamped path
   --schedulers "LIST"       Space-separated scheduler list
-                            Default: "baseline scx_cosmos scx_bpfland scx_cake scx_flow"
+                            Default: "baseline scx_cosmos scx_bpfland scx_flow"
+  --duration-seconds N      Benchmark duration (default: ${DURATION_SECONDS})
+  --workers N               Number of IPC worker pairs (default: ${WORKERS})
+  --message-bytes N         IPC ping-pong payload size in bytes (default: ${MESSAGE_BYTES})
+  --late-threshold-us N     Soft round-trip threshold in microseconds (default: ${LATE_THRESHOLD_US})
+  --cpu-hogs N              Number of stress-ng CPU hogs (default: same as workers)
+  --cpu-load N              stress-ng CPU load percentage (default: ${CPU_LOAD})
   -h, --help                Show this help
-
-Examples:
-  sudo ./mini_benchmarker.sh
-  sudo ./mini_benchmarker.sh --schedulers "scx_cosmos scx_flow"
-  sudo ./mini_benchmarker.sh --runs 2 --keep-results 3
 EOF
 }
 
@@ -68,10 +75,7 @@ ensure_sudo_ready() {
     if [ "$(id -u)" -eq 0 ]; then
         return
     fi
-    command -v sudo >/dev/null 2>&1 || {
-        err "sudo is required to switch schedulers and run benchmarks."
-        exit 1
-    }
+    command -v sudo >/dev/null 2>&1 || { err "sudo is required."; exit 1; }
     say "Refreshing sudo credentials"
     sudo -v
 }
@@ -105,24 +109,29 @@ current_sched_ext_ops() {
     cat /sys/kernel/sched_ext/root/ops 2>/dev/null || true
 }
 
-scheduler_is_active() {
-    local name="$1"
-    case "$(current_sched_ext_ops)" in
-        *"$name"*) return 0 ;;
+scheduler_short_name() {
+    case "$1" in
+        scx_*) printf '%s\n' "${1#scx_}" ;;
+        *) printf '%s\n' "$1" ;;
     esac
-    pgrep -x "scx_${name}" >/dev/null 2>&1
+}
+
+scheduler_matches_name() {
+    local current="$1"
+    local expected="$2"
+    local short_name
+
+    short_name="$(scheduler_short_name "$expected")"
+    case "$current" in
+        "$expected"|"$expected"_*|"$short_name"|"$short_name"_*) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 scheduler_is_attached() {
     local name="$1"
-    case "$(current_sched_ext_ops)" in
-        *"$name"*)
-            [ "$(current_sched_ext_state)" = "enabled" ]
-            ;;
-        *)
-            return 1
-            ;;
-    esac
+    scheduler_matches_name "$(current_sched_ext_ops)" "$name" &&
+        [ "$(current_sched_ext_state)" = "enabled" ]
 }
 
 service_exists() {
@@ -148,15 +157,6 @@ capture_scheduler_diagnostics() {
         printf 'sched_ext_ops=%s\n' "$(current_sched_ext_ops)"
         printf '\n== systemctl status scx.service ==\n'
         run_privileged systemctl status scx.service --no-pager || true
-        printf '\n== systemctl show scx.service ==\n'
-        run_privileged systemctl show scx.service \
-            -p ActiveState \
-            -p SubState \
-            -p Result \
-            -p ExecMainStatus \
-            -p ExecMainCode \
-            -p ActiveEnterTimestamp \
-            || true
         printf '\n== journalctl -u scx.service ==\n'
         run_privileged journalctl -u scx.service -n 120 --no-pager || true
         printf '\n== journalctl -k ==\n'
@@ -205,26 +205,13 @@ wait_for_scheduler_state() {
         if [ "$want" = "active" ] && scheduler_is_attached "$expected"; then
             return 0
         fi
-        if [ "$want" = "inactive" ] && ! scheduler_is_attached "$expected" && ! pgrep -x "scx_${expected}" >/dev/null 2>&1; then
-            return 0
-        fi
-
-        attempt=$((attempt + 1))
-        sleep 0.5
-    done
-
-    return 1
-}
-
-wait_for_sched_ext_idle() {
-    local attempt=0
-    while [ "$attempt" -lt 20 ]; do
-        if [ -z "$(current_sched_ext_ops)" ]; then
+        if [ "$want" = "inactive" ] && ! scheduler_is_attached "$expected" && ! pgrep -x "$expected" >/dev/null 2>&1; then
             return 0
         fi
         attempt=$((attempt + 1))
         sleep 0.5
     done
+
     return 1
 }
 
@@ -238,38 +225,8 @@ stop_all_schedulers() {
         return
     fi
 
-    warn "reset_sched_ext_state.sh not available; falling back to inline cleanup"
-
-    if service_exists && systemctl is-active --quiet scx.service; then
-        say "Stopping scx.service"
-        run_privileged systemctl stop scx.service || true
-    fi
-
-    for proc in scx_flow scx_cosmos scx_bpfland scx_cake scx_pandemonium pandemonium; do
-        if pgrep -x "$proc" >/dev/null 2>&1; then
-            say "Stopping running $proc processes"
-            run_privileged pkill -x "$proc" || true
-        fi
-    done
-
-    wait_for_scheduler_state flow inactive || true
-    wait_for_scheduler_state cosmos inactive || true
-    wait_for_scheduler_state bpfland inactive || true
-    wait_for_scheduler_state cake inactive || true
-    wait_for_scheduler_state pandemonium inactive || true
-    wait_for_sched_ext_idle || true
-}
-
-manual_scheduler_short_name() {
-    case "$1" in
-        scx_flow) printf 'flow\n' ;;
-        scx_cosmos) printf 'cosmos\n' ;;
-        scx_bpfland) printf 'bpfland\n' ;;
-        scx_cake) printf 'cake\n' ;;
-        *)
-            return 1
-            ;;
-    esac
+    err "Missing reset helper: $RESET_SCRIPT"
+    exit 1
 }
 
 scheduler_binary_path() {
@@ -279,16 +236,12 @@ scheduler_binary_path() {
 start_scheduler_manual() {
     local scheduler="$1"
     local run_name="$2"
-    local short_name=""
     local binary_path=""
     local runtime_log=""
 
-    short_name="$(manual_scheduler_short_name "$scheduler")"
     binary_path="$(scheduler_binary_path "$scheduler")"
-    [ -n "$binary_path" ] || {
-        err "Could not resolve binary path for $scheduler"
-        return 1
-    }
+    [ -n "$binary_path" ] || { err "Could not resolve binary path for $scheduler"; return 1; }
+
     runtime_log="$RESULTS_DIR/console/${scheduler}_${run_name}.log"
     CURRENT_RUNTIME_LOG="$runtime_log"
     mkdir -p "$RESULTS_DIR/console"
@@ -296,12 +249,9 @@ start_scheduler_manual() {
     say "Starting $scheduler directly"
     run_privileged env RUST_LOG=info "$binary_path" >"$runtime_log" 2>&1 &
 
-    if wait_for_scheduler_state "$short_name" active; then
+    if wait_for_scheduler_state "$scheduler" active; then
         ok "Scheduler state is ready for $scheduler"
     else
-        if grep -Fq "another sched_ext scheduler is already running" "$runtime_log" 2>/dev/null; then
-            err "$scheduler refused to start because another sched_ext scheduler was still active"
-        fi
         err "Timed out waiting for scheduler state: $scheduler"
         return 1
     fi
@@ -335,15 +285,22 @@ BENCHMARK_LABEL=${scheduler} run ${run_index}
 EXPECTED_SCHEDULER=${scheduler}
 SCHED_EXT_STATE=$(current_sched_ext_state)
 CURRENT_SCHEDULER=$(current_sched_ext_ops)
-LATENCY_MAX_US=
-LATENCY_SPIKES_OVER_100US=
-LATENCY_SAMPLES=
-THROUGHPUT_BENCHMARK=none
-HACKBENCH_MEAN_SECONDS=
-SYSBENCH_EVENTS_PER_SEC=
-SYSBENCH_AVG_LATENCY_MS=
-STRESSNG_BOGO_OPS_PER_SEC=
+IPC_DURATION_SECONDS=
+IPC_WORKERS=
+IPC_CPUS=
+IPC_MESSAGE_BYTES=
+IPC_SAMPLES=
+IPC_MEAN_RTT_US=
+IPC_P95_RTT_US=
+IPC_P99_RTT_US=
+IPC_MAX_RTT_US=
+IPC_LATE_THRESHOLD_US=
+IPC_OVER_THRESHOLD_COUNT=
+IPC_OVER_THRESHOLD_RATIO_PCT=
+CPU_HOGS=
+CPU_LOAD=
 LOG_PATH=
+RAW_JSON_PATH=
 SCHEDULER_UNDER_TEST=${scheduler}
 RUN_INDEX=${run_index}
 COMPARE_STATUS=skipped
@@ -353,23 +310,9 @@ POST_RUN_CURRENT_SCHEDULER=$(current_sched_ext_ops)
 EOF
 }
 
-normalize_scheduler_name() {
-    local scheduler="$1"
-
-    case "$scheduler" in
-        scx_baseline)
-            printf 'baseline\n'
-            ;;
-        *)
-            printf '%s\n' "$scheduler"
-            ;;
-    esac
-}
-
 run_single_benchmark() {
-    local scheduler
+    local scheduler="$1"
     local run_index="$2"
-    scheduler="$(normalize_scheduler_name "$1")"
     local log_file="$RESULTS_DIR/logs/${scheduler}_run${run_index}.log"
     local summary_file="$RESULTS_DIR/summaries/${scheduler}_run${run_index}.env"
     local label="${scheduler} run ${run_index}"
@@ -397,12 +340,18 @@ run_single_benchmark() {
         fi
     fi
 
-    say "Running benchmark for $label"
+    say "Running IPC benchmark for $label"
     if run_privileged "$BENCHMARK_SCRIPT" \
         --log-file "$log_file" \
         --summary-file "$summary_file" \
         --expected-scheduler "$expected" \
-        --label "$label"; then
+        --label "$label" \
+        --duration-seconds "$DURATION_SECONDS" \
+        --workers "$WORKERS" \
+        --message-bytes "$MESSAGE_BYTES" \
+        --late-threshold-us "$LATE_THRESHOLD_US" \
+        --cpu-hogs "${CPU_HOGS:-$WORKERS}" \
+        --cpu-load "$CPU_LOAD"; then
         write_summary_metadata "$summary_file" "$scheduler" "$run_index" "completed" ""
         ok "Completed $label"
     else
@@ -411,16 +360,12 @@ run_single_benchmark() {
         err "Benchmark failed for $label"
         return 0
     fi
-
-    return 0
 }
 
 render_outputs() {
     local tagged_dir="$RESULTS_DIR/tagged"
     mkdir -p "$tagged_dir"
-    python3 "$PLOTTER_SCRIPT" \
-        --summaries-dir "$RESULTS_DIR/summaries" \
-        --output-dir "$tagged_dir"
+    python3 "$PLOTTER_SCRIPT" --summaries-dir "$RESULTS_DIR/summaries" --output-dir "$tagged_dir"
 }
 
 prune_old_results() {
@@ -430,7 +375,7 @@ prune_old_results() {
     old_dirs=$(ls -1dt "$RESULTS_ROOT"/* 2>/dev/null | tail -n +"$((KEEP_RESULTS + 1))" || true)
     [ -n "$old_dirs" ] || return 0
 
-    warn "Pruning old comparison result directories, keeping the newest ${KEEP_RESULTS}"
+    warn "Pruning old IPC result directories, keeping the newest ${KEEP_RESULTS}"
     while IFS= read -r old_dir; do
         [ -n "$old_dir" ] || continue
         rm -rf "$old_dir"
@@ -440,70 +385,29 @@ EOF
 }
 
 require_prereqs() {
-    [ -x "$BENCHMARK_SCRIPT" ] || {
-        err "Missing benchmark script: $BENCHMARK_SCRIPT"
-        exit 1
-    }
-    [ -f "$PLOTTER_SCRIPT" ] || {
-        err "Missing plotter script: $PLOTTER_SCRIPT"
-        exit 1
-    }
-    command -v python3 >/dev/null 2>&1 || {
-        err "python3 is required for chart generation."
-        exit 1
-    }
-    service_exists || {
-        err "scx.service was not found. Install the scheduler first."
-        exit 1
-    }
+    [ -x "$BENCHMARK_SCRIPT" ] || { err "Missing IPC benchmark script: $BENCHMARK_SCRIPT"; exit 1; }
+    [ -f "$PLOTTER_SCRIPT" ] || { err "Missing plotter script: $PLOTTER_SCRIPT"; exit 1; }
+    [ -x "$SCRIPT_DIR/ipc_probe.py" ] || { err "Missing or non-executable IPC probe helper: $SCRIPT_DIR/ipc_probe.py"; exit 1; }
+    command -v python3 >/dev/null 2>&1 || { err "python3 is required for chart generation."; exit 1; }
+    service_exists || { err "scx.service was not found. Install the scheduler first."; exit 1; }
 }
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --runs)
-            RUNS="$2"
-            shift 2
-            ;;
-        --keep-results)
-            KEEP_RESULTS="$2"
-            shift 2
-            ;;
-        --results-dir)
-            RESULTS_DIR="$2"
-            shift 2
-            ;;
-        --schedulers)
-            read -r -a SCHEDULERS <<< "$2"
-            for i in "${!SCHEDULERS[@]}"; do
-                SCHEDULERS[$i]="$(normalize_scheduler_name "${SCHEDULERS[$i]}")"
-            done
-            shift 2
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        *)
-            err "Unknown option: $1"
-            usage >&2
-            exit 1
-            ;;
+        --runs) RUNS="$2"; shift 2 ;;
+        --keep-results) KEEP_RESULTS="$2"; shift 2 ;;
+        --results-dir) RESULTS_DIR="$2"; shift 2 ;;
+        --schedulers) read -r -a SCHEDULERS <<< "$2"; shift 2 ;;
+        --duration-seconds) DURATION_SECONDS="$2"; shift 2 ;;
+        --workers) WORKERS="$2"; shift 2 ;;
+        --message-bytes) MESSAGE_BYTES="$2"; shift 2 ;;
+        --late-threshold-us) LATE_THRESHOLD_US="$2"; shift 2 ;;
+        --cpu-hogs) CPU_HOGS="$2"; shift 2 ;;
+        --cpu-load) CPU_LOAD="$2"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        *) err "Unknown option: $1"; usage >&2; exit 1 ;;
     esac
 done
-
-case "$RUNS" in
-    ''|*[!0-9]*|0)
-        err "--runs must be a positive integer"
-        exit 1
-        ;;
-esac
-
-case "$KEEP_RESULTS" in
-    ''|*[!0-9]*)
-        err "--keep-results must be zero or a positive integer"
-        exit 1
-        ;;
-esac
 
 require_prereqs
 ensure_sudo_ready
@@ -521,17 +425,8 @@ for scheduler in "${SCHEDULERS[@]}"; do
     done
 done
 
-restore_default_service_state
 render_outputs
-fix_results_ownership
+prune_old_results
 
-if [ "$KEEP_RESULTS" -gt 0 ]; then
-    prune_old_results
-fi
-
-ok "Comparison run complete"
-say "Results: $RESULTS_DIR"
-say "CSV   : $RESULTS_DIR/tagged/mini_benchmarker_summary.csv"
-say "PNG   : $RESULTS_DIR/tagged/mini_benchmarker_comparison.png"
-say "SVG   : $RESULTS_DIR/tagged/mini_benchmarker_comparison.svg"
-say "Report: $RESULTS_DIR/tagged/mini_benchmarker_report.md"
+ok "IPC benchmark comparison complete"
+say "CSV/PNG/SVG/report written to: $RESULTS_DIR/tagged"

@@ -21,6 +21,15 @@ err()  { printf "${BLD}${RED}[ERROR ]${RST} %s\n" "$1" >&2; }
 ROOT_OPS_PATH="/sys/kernel/sched_ext/root/ops"
 WAIT_SECONDS=10
 TERM_WAIT_SECONDS=3
+KNOWN_SCHEDULERS=(
+    scx_flow
+    scx_timely
+    scx_bpfland
+    scx_cake
+    scx_cosmos
+    scx_pandemonium
+    pandemonium
+)
 
 usage() {
     cat <<EOF
@@ -101,7 +110,7 @@ report_scheduler_processes() {
     local found=0
     local scheduler
 
-    for scheduler in scx_flow scx_timely scx_bpfland scx_cake scx_cosmos; do
+    for scheduler in "${KNOWN_SCHEDULERS[@]}"; do
         if pgrep -x "$scheduler" >/dev/null 2>&1; then
             if [ "$found" -eq 0 ]; then
                 warn "Some scheduler processes still appear to be alive:"
@@ -116,7 +125,7 @@ report_scheduler_processes() {
 
 stop_service_if_present
 
-for scheduler in scx_flow scx_timely scx_bpfland scx_cake scx_cosmos; do
+for scheduler in "${KNOWN_SCHEDULERS[@]}"; do
     stop_scheduler "$scheduler"
 done
 
