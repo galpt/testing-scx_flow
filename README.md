@@ -37,7 +37,7 @@ Key results:
 
 Browse the snapshot here:
 
-- [20260406_scx_flow_v2.0.3_freeze](/home/galpt/Desktop/Disk_D/sched-research/.testing-scx_flow-benchmark-archives/20260406_scx_flow_v2.0.3_freeze)
+- [20260406_scx_flow_v2.0.3_freeze](20260406_scx_flow_v2.0.3_freeze/)
 
 ## Notes
 
