@@ -1,0 +1,4 @@
+scheduler,display_scheduler,kernel_release,overall_status,overall_note,mixed_p95_us,mixed_p99_us,mixed_max_us,rt_p95_us,rt_p99_us,rt_max_us,kernel_stalls,summary_path
+scx_cosmos,scx_cosmos,6.19.10-1-cachyos,completed,,911,930,2941,351,363,1999596,0,/home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/mixed-comparison-results/20260406_213701/runs/scx_cosmos/latency_stress_summary.env
+scx_pandemonium,scx_pandemonium,6.19.10-1-cachyos,completed,,634,3339,18083,74,631,1999436,0,/home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/mixed-comparison-results/20260406_213701/runs/scx_pandemonium/latency_stress_summary.env
+scx_flow,scx_flow,6.19.10-1-cachyos,completed,,59,64,146,57,61,1998700,0,/home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow/mixed-comparison-results/20260406_213701/runs/scx_flow/latency_stress_summary.env
