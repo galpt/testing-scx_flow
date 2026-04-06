@@ -10,6 +10,14 @@ This branch is intentionally separate from `main`:
 
 ## Archived Snapshots
 
+### `20260406_mini_scheduler_matrix`
+
+Curated mini benchmark matrix covering `baseline`, `scx_cosmos`, `scx_cake`, `scx_pandemonium`, and `scx_flow`.
+
+Browse the snapshot here:
+
+- [20260406_mini_scheduler_matrix](20260406_mini_scheduler_matrix/)
+
 ### `20260406_scx_flow_v2.0.3_freeze`
 
 Frozen benchmark snapshot for the `scx_flow v2.0.3` line associated with the
