@@ -10,6 +10,14 @@ This branch is intentionally separate from `main`:
 
 ## Archived Snapshots
 
+### `20260407_longrun_threshold_fix`
+
+Curated longrun snapshot captured after lowering the default soft lateness threshold from `1000us` to `500us`.
+
+Browse the snapshot here:
+
+- [20260407_longrun_threshold_fix](20260407_longrun_threshold_fix/)
+
 ### `20260406_mini_scheduler_matrix`
 
 Curated mini benchmark matrix covering `baseline`, `scx_cosmos`, `scx_cake`, `scx_pandemonium`, and `scx_flow`.
