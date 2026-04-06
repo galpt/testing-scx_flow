@@ -3,8 +3,8 @@
 #
 # Copyright (c) 2026 Galih Tama <galpt@v.recipes>
 #
-# Generate a concise review-ready summary from the latest scx_flow comparison
-# artifacts and optional hook/lifecycle validation logs.
+# Generate a concise review-ready summary from a mini_benchmarker comparison
+# directory and optional hook/lifecycle validation logs.
 
 set -euo pipefail
 
@@ -20,7 +20,7 @@ usage() {
 Usage: ./prepare_review_bundle.sh [options]
 
 Options:
-  --comparison-dir PATH   Comparison result directory to summarize
+  --comparison-dir PATH   mini_benchmarker comparison result directory to summarize
   --hook-log PATH         Optional validate_hooks_scx_flow output log
   --lifecycle-log PATH    Optional validate_lifecycle_scx_flow output log
   --latency-summary PATH  Optional latency_stress_scx_flow summary env file
@@ -171,9 +171,13 @@ LATENCY_OVERALL_STATUS="$(parse_metric_from_env 'OVERALL_STATUS' "$LATENCY_SUMMA
 LATENCY_OVERALL_NOTE="$(parse_metric_from_env 'OVERALL_NOTE' "$LATENCY_SUMMARY")"
 LATENCY_MIXED_STATUS="$(parse_metric_from_env 'MIXED_PHASE_STATUS' "$LATENCY_SUMMARY")"
 LATENCY_MIXED_MAX="$(parse_metric_from_env 'MIXED_LATENCY_MAX_US' "$LATENCY_SUMMARY")"
+LATENCY_MIXED_P95="$(parse_metric_from_env 'MIXED_LATENCY_P95_US' "$LATENCY_SUMMARY")"
+LATENCY_MIXED_P99="$(parse_metric_from_env 'MIXED_LATENCY_P99_US' "$LATENCY_SUMMARY")"
 LATENCY_MIXED_SPIKES="$(parse_metric_from_env 'MIXED_SPIKES_OVER_100US' "$LATENCY_SUMMARY")"
 LATENCY_RT_STATUS="$(parse_metric_from_env 'RT_PHASE_STATUS' "$LATENCY_SUMMARY")"
 LATENCY_RT_MAX="$(parse_metric_from_env 'RT_LATENCY_MAX_US' "$LATENCY_SUMMARY")"
+LATENCY_RT_P95="$(parse_metric_from_env 'RT_LATENCY_P95_US' "$LATENCY_SUMMARY")"
+LATENCY_RT_P99="$(parse_metric_from_env 'RT_LATENCY_P99_US' "$LATENCY_SUMMARY")"
 LATENCY_RT_SPIKES="$(parse_metric_from_env 'RT_SPIKES_OVER_100US' "$LATENCY_SUMMARY")"
 LATENCY_RUNNABLE_MAX="$(parse_metric_from_env 'RUNNABLE_MAX' "$LATENCY_SUMMARY")"
 LATENCY_CPU_RELEASE_MAX="$(parse_metric_from_env 'CPU_RELEASE_MAX' "$LATENCY_SUMMARY")"
@@ -222,10 +226,10 @@ Latency-stress overall status:
 - status: $(fmt_or_na "$LATENCY_OVERALL_STATUS")
 - note: $(fmt_or_na "$LATENCY_OVERALL_NOTE")
 
-| Phase | Status | Max latency (us) | Spikes >100us |
-| --- | --- | ---: | ---: |
-| Mixed load + wake storm | $(fmt_or_na "$LATENCY_MIXED_STATUS") | $(fmt_or_na "$LATENCY_MIXED_MAX") | $(fmt_or_na "$LATENCY_MIXED_SPIKES") |
-| RT interference | $(fmt_or_na "$LATENCY_RT_STATUS") | $(fmt_or_na "$LATENCY_RT_MAX") | $(fmt_or_na "$LATENCY_RT_SPIKES") |
+| Phase | Status | P95 latency (us) | P99 latency (us) | Max latency (us) | Spikes >100us |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Mixed load + wake storm | $(fmt_or_na "$LATENCY_MIXED_STATUS") | $(fmt_or_na "$LATENCY_MIXED_P95") | $(fmt_or_na "$LATENCY_MIXED_P99") | $(fmt_or_na "$LATENCY_MIXED_MAX") | $(fmt_or_na "$LATENCY_MIXED_SPIKES") |
+| RT interference | $(fmt_or_na "$LATENCY_RT_STATUS") | $(fmt_or_na "$LATENCY_RT_P95") | $(fmt_or_na "$LATENCY_RT_P99") | $(fmt_or_na "$LATENCY_RT_MAX") | $(fmt_or_na "$LATENCY_RT_SPIKES") |
 
 Latency-stress monitor peaks:
 - runnable(): $(fmt_or_na "$LATENCY_RUNNABLE_MAX")

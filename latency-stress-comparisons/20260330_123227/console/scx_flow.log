@@ -1,6 +1,0 @@
-05:32:58 [INFO] Starting scx_flow scheduler
-05:33:02 [INFO] autotune=latency gen=1 reserve_cap=275us shared_slice=900us refill_floor=120us preempt_budget=175us preempt_refill=225us
-05:33:03 [INFO] autotune=latency gen=2 reserve_cap=300us shared_slice=900us refill_floor=140us preempt_budget=200us preempt_refill=250us
-05:33:04 [INFO] autotune=latency gen=3 reserve_cap=300us shared_slice=900us refill_floor=140us preempt_budget=225us preempt_refill=250us
-EXIT: unregistered from user space
-05:33:16 [INFO] Scheduler exited: UserExitInfo { kind: 64, exit_code: 0, reason: Some("unregistered from user space"), msg: None, dump: None }

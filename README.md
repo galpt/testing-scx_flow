@@ -6,16 +6,13 @@ resetting `scx_flow` through the shared `scx.service` systemd unit.
 ## How scx_flow Works
 
 `scx_flow` is a budget-based `sched_ext` scheduler with a small number of
-bounded service paths. In plain terms:
+bounded service paths and decayed confidence signals. In plain terms:
 
-- sleeping tasks build positive budget
-- short responsive wakeups can get faster service
-- heavy budget-exhausting tasks get pushed toward containment
+- sleeping tasks refill budget
+- short responsive wakeups can get bounded faster service
+- repeated good behavior strengthens locality and IPC confidence
+- repeated exhaustion raises containment and latency pressure
 - shared fallback work still runs so the machine does not become unfair
-
-The current `v2.0.2` baseline also has a bounded direct-local front door for
-good short-sleeper wakeups. That gives `scx_flow` a cheaper locality fast path
-without making local dispatch the whole scheduler.
 
 Read the diagram like this:
 
@@ -29,23 +26,23 @@ Read the diagram like this:
 ```mermaid
 flowchart TD
     Start((Start)) --> A[Task Sleeps]
-    A --> B[Budget Refill On Wake]
+    A --> B[Budget Refill + Signal Update]
     B --> C{Positive Budget?}
 
     C -- No --> S[Shared Path]
     C -- Yes --> D[Classify Wakeup]
 
-    D --> E{Contained Hog?}
+    D --> E{Containment Active?}
     E -- Yes --> F[Contained Path]
     E -- No --> G{RT-Sensitive?}
 
     G -- Yes --> H[Preempt + Tiny Local Slice]
-    G -- No --> I{Latency Candidate or Debt?}
+    G -- No --> I{Latency Allowance or Pressure?}
 
     I -- Yes --> J[Latency / Urgent Latency Path]
-    I -- No --> K{Direct-Local Candidate?}
+    I -- No --> K{Locality or IPC Confidence?}
 
-    K -- Yes --> L[Bounded Direct-Local Front Door]
+    K -- Yes --> L[Bounded Local Fast Path]
     K -- No --> M[Reserved Path]
 
     H --> N[Dispatch Arbitration]
@@ -58,8 +55,8 @@ flowchart TD
     N --> O[Task Runs]
     O --> P{Exhausted Budget?}
 
-    P -- Yes --> Q[Raise Hog Score + Possible Latency Debt]
-    P -- No --> R[Good Short Sleep Raises Direct-Local Score]
+    P -- Yes --> Q[Raise Containment + Latency Pressure]
+    P -- No --> R[Good Short Sleep Raises Locality and IPC Confidence]
 
     Q --> EndCycle([Task Stops And Sleeps Again])
     R --> EndCycle
@@ -76,7 +73,7 @@ flowchart TD
 If you are reading benchmark output, this mental model helps:
 
 - strong latency numbers usually mean the bounded lanes are doing their job
-- strong FPS numbers usually mean the direct-local and reserved paths are
+- strong FPS numbers usually mean the locality-friendly and reserved paths are
   feeding short bursts well
 - bad regressions often mean tasks are being classified into the wrong path
 
@@ -111,7 +108,7 @@ cat /sys/kernel/sched_ext/state
 enabled
 
 cat /sys/kernel/sched_ext/root/ops
-scx_flow_2.0.2_x86_64_unknown_linux_gnu
+scx_flow_*
 ```
 
 And:
@@ -127,7 +124,7 @@ And:
 If `sudo ./benchmark.sh` prints:
 
 ```bash
-Current scheduler: scx_flow_2.0.2_x86_64_unknown_linux_gnu
+Current scheduler: scx_flow_*
 ```
 
 that is already a healthy scheduler signal. The benchmark step itself is a
@@ -360,6 +357,7 @@ Expected:
 - runs a mixed-load phase with `cyclictest`, wake storms, and short-lived task churn
 - runs an RT-interference phase when `taskset`, `chrt`, and `timeout` are available
 - captures `scx_flow --monitor` output and writes a machine-readable summary env file
+- records mixed and RT latency `p95`, `p99`, max, spike counts, and sample counts from the `cyclictest` samples
 
 Use this when the broad benchmark looks good but you want a more adversarial
 latency-focused check before claiming the scheduler is review-ready.
@@ -374,7 +372,7 @@ Expected:
 
 - long-lived bursty workers first behave like budget-exhausting hogs and then
   switch into a recovery phase
-- `hog_contain` should go non-zero if the `v2` containment path is alive
+- `hog_contain` should go non-zero if the containment path is alive
 - `hog_recover` should go non-zero if the same workers recover cleanly enough
 - the output also shows `exhaust`, `pos_wake`, and `latency_enq` so you can
   tell whether the workload actually matched the trigger shape
@@ -403,7 +401,26 @@ If you only want `scx_cosmos` vs `scx_flow`:
 sudo ./mini_benchmarker.sh --schedulers "scx_cosmos scx_flow"
 ```
 
-### 11. Generate Review Bundle
+### 11. Run Deadline Comparison
+
+```bash
+sudo ./deadline_benchmarker.sh --runs 2 --schedulers "baseline scx_cosmos scx_flow"
+```
+
+Expected:
+
+- it compares periodic frame-target wake deadline behavior across the selected schedulers
+- each scheduler gets its own raw log, summary env, and raw JSON probe output
+- a comparison CSV, PNG, SVG, and Markdown report are generated
+- the report and charts now include `Deadline Jitter p99 (us)` for deadline-consistency comparisons
+- only the newest three deadline comparison result directories are kept automatically
+- you can add another installed scheduler such as `scx_pandemonium` directly in `--schedulers`
+
+Use this when `scx_flow` already looks good in broad latency/FPS testing and
+you want a tighter answer to “how often does a frame-like periodic task wake up
+late enough to miss its deadline under load?”
+
+### 12. Generate Review Bundle
 
 ```bash
 ./prepare_review_bundle.sh \
@@ -414,13 +431,139 @@ sudo ./mini_benchmarker.sh --schedulers "scx_cosmos scx_flow"
 
 Expected:
 
-- generates a concise Markdown bundle with the latest comparison snapshot
+- generates a concise Markdown bundle from a `mini_benchmarker.sh` comparison snapshot
 - includes optional hook/lifecycle validation maxima when those logs are provided
 - automatically includes the newest latency-stress summary when one exists
+- surfaces latency-stress tail metrics such as mixed/RT `p95` and `p99` when the summary provides them
 - keeps the claims and the known limits in one review-friendly place
 
 Use this when you want one artifact to share with senior engineers instead of
 pointing them at multiple directories and terminal transcripts.
+
+### 13. Run Burst Comparison
+
+```bash
+sudo ./burst_benchmarker.sh --runs 2 --schedulers "baseline scx_cosmos scx_flow"
+sudo ./burst_benchmarker.sh --strict --runs 2 --schedulers "baseline scx_flow"
+```
+
+Expected:
+
+- it compares sudden load-spike tail latency across the selected schedulers
+- each scheduler gets its own raw log, summary env, and raw JSON probe output
+- a comparison CSV, PNG, SVG, and Markdown report are generated
+- only the newest three burst comparison result directories are kept automatically
+- you can add another installed scheduler such as `scx_pandemonium` directly in `--schedulers`
+- `--strict` switches to a much longer burst run so ultra-low miss ratios such as
+  `0.01%` and below are easier to measure credibly
+
+Use this when you specifically want a local equivalent of the “Burst P99 (us)”
+style tables from other scheduler benchmark suites.
+
+### 14. Run Mixed-Workload Comparison
+
+```bash
+sudo ./mixed_benchmarker.sh
+sudo ./mixed_benchmarker.sh --schedulers "scx_cosmos scx_pandemonium scx_flow"
+sudo ./mixed_benchmarker.sh --schedulers "baseline scx_cosmos scx_flow"
+```
+
+Expected:
+
+- it compares the mixed latency-stress workload across the selected schedulers
+- each scheduler gets its own raw log, env summary, monitor log, and kernel log
+- a comparison CSV, PNG, SVG, and Markdown report are generated
+- the charts focus on mixed/RT `p95`, `p99`, and max latency plus kernel stall events
+- only the newest three mixed comparison result directories are kept automatically
+- the default run skips `baseline` to save time and avoid the plain-kernel RT-hog corner case during everyday mixed comparisons
+- `baseline` is still supported explicitly when you do want a plain-kernel comparison in the same mixed table
+
+Use this when you want a local equivalent of “Mixed Workload Latency P99 (us)”
+style tables without hand-comparing separate latency-stress result directories.
+
+### 15. Run Longrun Comparison
+
+```bash
+sudo ./longrun_benchmarker.sh
+sudo ./longrun_benchmarker.sh --schedulers "baseline scx_cosmos scx_pandemonium scx_flow"
+```
+
+Expected:
+
+- it compares sustained periodic wake latency under continuous background CPU load
+- each scheduler gets its own raw log, env summary, and raw JSON probe output
+- a comparison CSV, PNG, SVG, and Markdown report are generated
+- the charts focus on long-run miss ratio, late-over-threshold ratio, and `p95/p99/max`
+- only the newest three longrun comparison result directories are kept automatically
+
+Use this when you specifically want a local equivalent of “Long-Run Latency P99 (us)”
+style tables from other scheduler benchmark suites.
+
+### 16. Run IPC Comparison
+
+```bash
+sudo ./ipc_benchmarker.sh
+sudo ./ipc_benchmarker.sh --schedulers "baseline scx_cosmos scx_pandemonium scx_flow"
+```
+
+Expected:
+
+- it compares Unix socket ping-pong round-trip tails under background CPU load
+- each scheduler gets its own raw log, env summary, and raw JSON probe output
+- a comparison CSV, PNG, SVG, and Markdown report are generated
+- the charts focus on IPC over-threshold ratio plus `p95/p99/max` round-trip latency
+- only the newest three IPC comparison result directories are kept automatically
+
+Use this when you want a local equivalent of an “IPC Round-Trip P99 (us)”
+table instead of inferring IPC behavior from broader mixed or longrun tests.
+
+### 17. Run App Launch Comparison
+
+```bash
+sudo ./app_launch_benchmarker.sh
+sudo ./app_launch_benchmarker.sh --schedulers "baseline scx_cosmos scx_pandemonium scx_flow"
+```
+
+Expected:
+
+- it compares repeated app-launch latency under background CPU load
+- each scheduler gets its own raw log, env summary, and raw JSON probe output
+- a comparison CSV, PNG, SVG, and Markdown report are generated
+- the charts focus on app-launch over-threshold ratio plus `p95/p99/max` launch latency
+- only the newest three app-launch comparison result directories are kept automatically
+
+Use this when you want a direct local equivalent of an “App Launch P99 (us)”
+table instead of guessing from IPC or mixed-workload results.
+
+### 18. Run Fork/Thread Throughput + Cache Comparison
+
+```bash
+sudo ./fork_thread_benchmarker.sh
+sudo ./fork_thread_benchmarker.sh --schedulers "baseline scx_cosmos scx_pandemonium scx_flow"
+```
+
+Expected:
+
+- it compares `perf bench sched messaging` elapsed time across schedulers
+- each scheduler gets its own raw benchmark log plus raw `perf` stdout/stat paths
+- a comparison CSV, PNG, SVG, and Markdown report are generated
+- the charts focus on elapsed time, IPC, and cache misses
+- only the newest three fork-thread comparison result directories are kept automatically
+
+Use this when you want a local equivalent of the fork-thread throughput table
+instead of inferring cache behavior from unrelated latency benchmarks.
+
+### 19. Run Keeper Validation
+
+```bash
+sudo ./keeper_validate_scx_flow.sh
+```
+
+Expected:
+
+- runs the current "keeper" validation bundle in one go
+- covers burst, mixed, deadline, longrun, and fork/thread comparisons
+- is useful before freezing a scheduler checkpoint or preparing a reviewer-facing summary
 
 Note:
 
@@ -531,13 +674,16 @@ Runs a targeted mixed-load and RT-interference latency check against the active
 captures `scx_flow --monitor` output, and rotates old result directories so
 only the latest three are kept by default. It also records kernel
 `sched_ext`/`scx_flow` events from the run window so runnable-task stalls are
-called out explicitly instead of being mistaken for a clean pass.
+called out explicitly instead of being mistaken for a clean pass. The summary
+now includes mixed and RT latency `p95`/`p99` tails in addition to max and
+spike counts.
 
 ### `validate_latency_repeat_scx_flow.sh`
 
 Runs the strict latency-stress validation several times in a row, then writes a
 CSV, env summary, and Markdown report with median and worst-case mixed/RT
-latency metrics. By default it reinstalls `scx_flow` between runs, but it can
+latency metrics, including `p95`, `p99`, max, and spikes over `100us`. By
+default it reinstalls `scx_flow` between runs, but it can
 also manually launch another scheduler such as `scx_cosmos` for apples-to-apples
 repeat validation:
 
@@ -547,14 +693,115 @@ sudo ./validate_latency_repeat_scx_flow.sh --runs 5 --scheduler-name scx_cosmos 
 ```
 
 Use this before tuning further so single noisy runs do not get mistaken for
-real progress.
+real progress. It also emits PNG/SVG charts so repeated tail behavior is easier
+to inspect quickly by eye.
 
 ### `latency_stress_compare.sh`
 
 Runs the same latency-stress workload against multiple schedulers, currently
 useful for direct `scx_cosmos` vs `scx_flow` comparisons, and writes a small
 Markdown report plus CSV summary so you can see whether a stall is specific to
-`scx_flow` or reproduces across schedulers.
+`scx_flow` or reproduces across schedulers while also comparing mixed/RT
+latency tails such as `p95` and `p99`. It also generates PNG/SVG comparison
+charts in the result directory.
+
+### `deadline_probe.py`
+
+Runs a periodic absolute-timer wake probe using a frame-like target period
+(default `16.666ms`) and reports lateness tails plus deadline miss ratio. It is
+the measurement core used by the deadline benchmark wrapper.
+
+### `deadline_benchmark.sh`
+
+Runs the periodic frame-target deadline probe against the currently active
+scheduler, optionally under `stress-ng` CPU load, and writes both a human log
+and machine-readable summary env file plus raw JSON probe output.
+
+### `deadline_benchmarker.sh`
+
+Runs multi-scheduler deadline comparisons using `deadline_benchmark.sh`,
+generates a CSV summary, PNG/SVG charts, and a Markdown report, and rotates old
+deadline comparison result directories so only the latest three are kept by
+default. You can include `baseline`, `scx_flow`, and any other installed
+scheduler binary such as `scx_pandemonium` in the scheduler list.
+
+### `burst_probe.py`
+
+Runs a fast periodic wake probe while controlled CPU burners turn on and off in
+short windows, then reports overall, idle, and burst-only lateness tails. This
+is the measurement core used by the burst benchmark wrapper.
+
+### `burst_benchmark.sh`
+
+Runs the burst-tail probe against the currently active scheduler and writes both
+a human log and machine-readable summary env file plus raw JSON probe output.
+Its `--strict` preset extends the run long enough that the summary can also
+report a meaningful `BURST_MISS_RATIO_RESOLUTION_PCT` for tiny miss ratios.
+
+### `burst_benchmarker.sh`
+
+Runs multi-scheduler burst-tail comparisons using `burst_benchmark.sh`,
+generates a CSV summary, PNG/SVG charts, and a Markdown report, and rotates old
+burst comparison result directories so only the latest three are kept by
+default. You can include `baseline`, `scx_flow`, and any other installed
+scheduler binary such as `scx_pandemonium` in the scheduler list.
+
+### `ipc_probe.py`
+
+Runs a Unix socket ping-pong round-trip probe between paired worker CPUs and
+reports over-threshold ratio plus `p95`, `p99`, and max round-trip latency.
+
+### `ipc_benchmark.sh`
+
+Runs the IPC round-trip probe against the currently active scheduler under
+optional `stress-ng` CPU load and writes both a human log and machine-readable
+summary env file plus raw JSON probe output.
+
+### `ipc_benchmarker.sh`
+
+Runs multi-scheduler IPC comparisons using `ipc_benchmark.sh`, generates a CSV
+summary, PNG/SVG charts, and a Markdown report, and rotates old IPC comparison
+result directories so only the latest three are kept by default. You can
+include `baseline`, `scx_flow`, and any other installed scheduler binary such
+as `scx_pandemonium` in the scheduler list.
+
+### `app_launch_probe.py`
+
+Runs repeated launches of a configured command and reports app-launch
+over-threshold ratio plus `p95`, `p99`, and max launch latency.
+
+### `app_launch_benchmark.sh`
+
+Runs the app-launch probe against the currently active scheduler under optional
+`stress-ng` CPU load and writes both a human log and machine-readable summary
+env file plus raw JSON probe output.
+
+### `app_launch_benchmarker.sh`
+
+Runs multi-scheduler app-launch comparisons using `app_launch_benchmark.sh`,
+generates a CSV summary, PNG/SVG charts, and a Markdown report, and rotates old
+app-launch comparison result directories so only the latest three are kept by
+default. You can include `baseline`, `scx_flow`, and any other installed
+scheduler binary such as `scx_pandemonium` in the scheduler list.
+
+### `fork_thread_benchmark.sh`
+
+Runs `perf bench sched messaging` while collecting `perf stat` counters for
+instructions, cycles, cache misses, and cache references, then writes a small
+env summary for automation.
+
+### `fork_thread_benchmarker.sh`
+
+Runs multi-scheduler fork/thread throughput comparisons using
+`fork_thread_benchmark.sh`, generates a CSV summary, PNG/SVG charts, and a
+Markdown report, and rotates old fork-thread comparison result directories so
+only the latest three are kept by default.
+
+### `latency_stress_plot.py`
+
+Renders PNG/SVG charts for the latency-stress comparison and repeat-validation
+CSV outputs so tail metrics can be scanned visually instead of only reading the
+Markdown/CSV summaries.
 
 ### `measure_locality_scx_flow.sh`
 
@@ -576,8 +823,14 @@ the Aquarium comparison artifacts.
 
 ### `prepare_review_bundle.sh`
 
-Builds a compact review-facing Markdown summary from a comparison result
-directory and optional validation logs.
+Builds a compact review-facing Markdown summary from a `mini_benchmarker.sh`
+comparison result directory and optional validation logs.
+
+### `keeper_validate_scx_flow.sh`
+
+Runs the current keeper validation bundle in one shot so you can quickly
+reconfirm burst, mixed, deadline, longrun, and fork/thread behavior before
+freezing a checkpoint.
 
 ### `install_benchmark_deps.sh`
 
@@ -599,8 +852,8 @@ current test window.
 
 - Active scheduler checks use `/sys/kernel/sched_ext/root/ops`.
 - Your kernel may report the active scheduler as a fully qualified name such as
-  `scx_flow_2.0.2_x86_64_unknown_linux_gnu`; that is still correct.
-- The current validated baseline is `scx_flow v2.0.2`.
+  `scx_flow_2.0.3_x86_64_unknown_linux_gnu`; that is still correct.
+- The current documented reference line is `scx_flow v2.0.3`.
 - `scx_flow` is intended for general-purpose production use. Treat these
   scripts as validation and regression tools, not as a claim that one benchmark
   result alone proves correctness under every possible workload.
