@@ -388,7 +388,7 @@ sudo ./mini_benchmarker.sh
 
 Expected:
 
-- it compares `baseline`, `scx_cosmos`, `scx_bpfland`, and `scx_flow` by default
+- it compares `baseline`, `scx_cosmos`, `scx_bpfland`, `scx_cake`, and `scx_flow` by default
 - each scheduler gets its own raw benchmark log and summary file
 - a comparison CSV, PNG, SVG, and Markdown report are generated
 - only the newest three comparison result directories are kept automatically
