@@ -27,39 +27,39 @@ Read the diagram like this:
 flowchart TD
     Start((Start)) --> A[Task Sleeps]
     A --> B[Budget Refill + Signal Update]
-    B --> C{Positive Budget?}
+    B --> C[Recompute Wake Profile]
+    C --> D{Positive Budget?}
 
-    C -- No --> S[Shared Path]
-    C -- Yes --> D[Classify Wakeup]
+    D -- No --> Shared[Shared Path]
+    D -- Yes --> E{Containment Active?}
 
-    D --> E{Containment Active?}
-    E -- Yes --> F[Contained Path]
-    E -- No --> G{RT-Sensitive?}
+    E -- Yes --> Contained[Contained Path]
+    E -- No --> F{RT or Preempt Ready?}
 
-    G -- Yes --> H[Preempt + Tiny Local Slice]
-    G -- No --> I{Latency Allowance or Pressure?}
+    F -- Yes --> RT[Preempt + Tiny Local Slice]
+    F -- No --> G{Latency Allowance or Pressure?}
 
-    I -- Yes --> J[Latency / Urgent Latency Path]
-    I -- No --> K{Locality or IPC Confidence?}
+    G -- Yes --> Latency[Latency / Urgent Latency Path]
+    G -- No --> H{Locality or IPC Confidence?}
 
-    K -- Yes --> L[Bounded Local Fast Path]
-    K -- No --> M[Reserved Path]
+    H -- Yes --> Local[Bounded Local Fast Path]
+    H -- No --> Reserved[Reserved Path]
 
-    H --> N[Dispatch Arbitration]
-    J --> N
-    L --> N
-    M --> N
-    F --> N
-    S --> N
+    RT --> Dispatch[Dispatch Arbitration]
+    Latency --> Dispatch
+    Local --> Dispatch
+    Reserved --> Dispatch
+    Contained --> Dispatch
+    Shared --> Dispatch
 
-    N --> O[Task Runs]
-    O --> P{Exhausted Budget?}
+    Dispatch --> Run[Task Runs]
+    Run --> I{Exhausted Budget?}
 
-    P -- Yes --> Q[Raise Containment + Latency Pressure]
-    P -- No --> R[Good Short Sleep Raises Locality and IPC Confidence]
+    I -- Yes --> Bad[Raise Containment + Latency Pressure]
+    I -- No --> Good[Good Short Sleep Raises Locality and IPC Confidence]
 
-    Q --> EndCycle([Task Stops And Sleeps Again])
-    R --> EndCycle
+    Bad --> EndCycle([Task Stops And Sleeps Again])
+    Good --> EndCycle
     EndCycle --> A
 ```
 
@@ -853,8 +853,8 @@ current test window.
 
 - Active scheduler checks use `/sys/kernel/sched_ext/root/ops`.
 - Your kernel may report the active scheduler as a fully qualified name such as
-  `scx_flow_2.0.3_x86_64_unknown_linux_gnu`; that is still correct.
-- The current documented reference line is `scx_flow v2.0.3`.
+  `scx_flow_2.1.0_x86_64_unknown_linux_gnu`; that is still correct.
+- The current documented reference line is `scx_flow v2.1.0`.
 - `scx_flow` is intended for general-purpose production use. Treat these
   scripts as validation and regression tools, not as a claim that one benchmark
   result alone proves correctness under every possible workload.
