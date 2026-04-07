@@ -10,6 +10,10 @@ overall keeper.
 
 ## Release Checkpoints
 
+The links below point to the **scheduler repo** release commits in
+[`galpt/scx`](https://github.com/galpt/scx), not to later documentation commits
+in `testing-scx_flow`.
+
 - [`v2.0.2` baseline](https://github.com/galpt/scx/commit/a0c5b0e2)  
   First strong high-FPS `v2` baseline with the bounded direct-local front door.
 - [`v2.0.3` release](https://github.com/galpt/scx/commit/bfdb2a5e)  
@@ -17,6 +21,10 @@ overall keeper.
   the later live-gaming checks.
 - [`v2.1.0` release](https://github.com/galpt/scx/commit/afc6fa11)  
   Hot-path cleanup and live-gaming polish release.
+
+For reference, this explanation page itself was added later in the
+`testing-scx_flow` repo by commit
+[`a3fff2c`](https://github.com/galpt/testing-scx_flow/commit/a3fff2c).
 
 ## What Improved in `v2.1.0`
 
