@@ -18,7 +18,7 @@ hot-path cleanup and live-gaming polish release in the scheduler repo.
 Context:
 
 - scheduler repo branch: `scx_flow_v2`
-- scheduler commit: `0b071b4f`
+- scheduler commit: `afc6fa11`
 - benchmark harness repo branch at publication time: `main`
 - machine profile during most scripted runs: `Balanced`
 - Aquarium is included only as a coarse sanity check; the final release call

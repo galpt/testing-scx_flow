@@ -5,7 +5,7 @@ Curated benchmark snapshot for the `scx_flow v2.1.0` release line.
 Context:
 
 - scheduler repo branch: `scx_flow_v2`
-- scheduler commit: `0b071b4f`
+- scheduler commit: `afc6fa11`
 - benchmark harness repo branch: `main`
 - machine profile during most scripted runs: `Balanced`
 - final release decision also included a manual Aquarium check and a live gaming session
