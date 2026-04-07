@@ -10,6 +10,40 @@ This branch is intentionally separate from `main`:
 
 ## Archived Snapshots
 
+### `20260407_scx_flow_v2.1.0_release`
+
+Frozen release snapshot for the `scx_flow v2.1.0` line associated with the
+hot-path cleanup and live-gaming polish release in the scheduler repo.
+
+Context:
+
+- scheduler repo branch: `scx_flow_v2`
+- scheduler commit: `0b071b4f`
+- benchmark harness repo branch at publication time: `main`
+- machine profile during most scripted runs: `Balanced`
+- Aquarium is included only as a coarse sanity check; the final release call
+  also used a manual Aquarium check and a live gaming session
+- the archived raw artifacts came from the final `2.1.0-rc1` validation pass
+  immediately before the version-only bump to `2.1.0`, so some CSV ops-name
+  fields still include the `rc1` suffix
+
+Key results:
+
+| Benchmark | Snapshot | Headline |
+| --- | --- | --- |
+| Mini | `20260407_222304` | `scx_flow` stays strong on hackbench and spike control, though not best-ever on every mini metric |
+| Deadline | `20260407_223701` | `scx_flow` keeps `0.0000%` late-over-threshold with `jitter p99 47us` |
+| IPC | `20260407_224321` | `scx_flow` lands around `p99 292us`, roughly keeper-class for the release line |
+| Longrun | `20260407_224639` | `scx_flow` recovers to `miss 1.7812%`, much healthier than the earlier failed redesign |
+| Fork/thread | `20260407_225141` | `scx_flow` is fastest and also leads cache misses / IPC in the archived bundle |
+| App launch | `20260407_225435` | still a weak spot; kept in the archive for honesty |
+| Burst | `20260407_230325` | `scx_flow` keeps very strong `p95/p99` latency |
+| Aquarium | `20260407_225638` | kept as a sanity artifact, but the final release decision leaned more on manual testing |
+
+Browse the snapshot here:
+
+- [20260407_scx_flow_v2.1.0_release](20260407_scx_flow_v2.1.0_release/)
+
 ### `20260407_longrun_threshold_fix`
 
 Curated longrun snapshot captured after lowering the default soft lateness threshold from `1000us` to `500us`.
