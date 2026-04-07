@@ -22,10 +22,6 @@ in `testing-scx_flow`.
 - [`v2.1.0` release](https://github.com/galpt/scx/commit/afc6fa11)  
   Hot-path cleanup and live-gaming polish release.
 
-For reference, this explanation page itself was added later in the
-`testing-scx_flow` repo by commit
-[`a3fff2c`](https://github.com/galpt/testing-scx_flow/commit/a3fff2c).
-
 ## What Improved in `v2.1.0`
 
 ### 1. Better real-world smoothness
