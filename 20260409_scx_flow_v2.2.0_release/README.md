@@ -4,7 +4,7 @@ Curated benchmark snapshot for the `scx_flow v2.2.0` release line.
 
 Context:
 
-- scheduler repo branch: `scx_flow_v2_2_scalability`
+- scheduler repo branch: [`scx_flow_v2_2_scalability`](https://github.com/galpt/scx/tree/scx_flow_v2_2_scalability)
 - scheduler commits:
   - [`4bedb478`](https://github.com/galpt/scx/commit/4bedb478) `scx_flow: prepare v2.2.0 scalability redesign and completions support`
   - [`69a02a4b`](https://github.com/galpt/scx/commit/69a02a4b) `scx_flow: move v2.2.0 under scheds/experimental`
@@ -18,7 +18,7 @@ Context:
 
 Important note:
 
-- these scripted artifacts came from the final `v2.2.0` candidate immediately before the hidden `--completions` compatibility addition for upstream PR `#3495`
+- these scripted artifacts came from the final `v2.2.0` candidate immediately before the hidden `--completions` compatibility addition for upstream PR [`#3495`](https://github.com/sched-ext/scx/pull/3495)
 - the archived reports and CSVs were normalized so the public snapshot reflects the released `scx_flow_2.2.0_*` ops name
 
 Snapshot layout:

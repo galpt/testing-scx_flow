@@ -18,7 +18,7 @@ upstream CLI-completions PR.
 
 Context:
 
-- scheduler repo branch: `scx_flow_v2_2_scalability`
+- scheduler repo branch: [`scx_flow_v2_2_scalability`](https://github.com/galpt/scx/tree/scx_flow_v2_2_scalability)
 - scheduler commits:
   - [`4bedb478`](https://github.com/galpt/scx/commit/4bedb478)
   - [`69a02a4b`](https://github.com/galpt/scx/commit/69a02a4b)
