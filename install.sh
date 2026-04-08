@@ -26,7 +26,7 @@ SCX_DEFAULTS="/etc/default/scx"
 SYSTEMD_SERVICE="/etc/systemd/system/${SERVICE_NAME}.service"
 
 # Source directory (where scx_flow source code is located)
-SCX_SOURCE_DIR="${SCX_SOURCE_DIR:-/home/galpt/Desktop/Disk_D/coding/scx/scheds/rust/scx_flow}"
+SCX_SOURCE_DIR="${SCX_SOURCE_DIR:-/home/galpt/Desktop/Disk_D/coding/scx/scheds/experimental/scx_flow}"
 
 BUILD_FROM_SOURCE="1"
 DRY_RUN=""
