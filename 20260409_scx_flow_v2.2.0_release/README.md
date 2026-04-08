@@ -45,6 +45,24 @@ Headline results:
 | App launch | `20260409_030314` | still not the strongest area, but `p95 619us` remains usable |
 | Burst | `20260409_030611` | burst tails are weaker than baseline and kept here for honesty |
 
+## What This Means In Practice
+
+For normal users, these results mostly translate to a machine that stays more
+responsive when foreground work and background CPU load happen at the same
+time.
+
+- strong `mixed`, `deadline`, and `longrun` results usually mean fewer visible
+  hiccups when games, desktop apps, or short interactive tasks compete with
+  heavier background work
+- strong `IPC` results usually mean better behavior for wake-heavy and
+  coordination-heavy workloads instead of those tasks getting delayed behind
+  bulk CPU activity
+- good `mini` spike control usually means the system feels steadier in short
+  bursts instead of only looking good on average throughput
+- weaker `app launch` or `burst` numbers mean this release should not be read
+  as "best at every latency shape", only as a stronger overall balance for the
+  intended general-purpose use case
+
 Notes:
 
 - `v2.2.0` was kept because it combined the scalability redesign work with strong scripted deadline, mixed, IPC, and longrun results while also passing manual Aquarium checks.
