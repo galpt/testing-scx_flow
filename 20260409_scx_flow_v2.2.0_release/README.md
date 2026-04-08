@@ -6,9 +6,9 @@ Context:
 
 - scheduler repo branch: `scx_flow_v2_2_scalability`
 - scheduler commits:
-  - `4bedb478` `scx_flow: prepare v2.2.0 scalability redesign and completions support`
-  - `69a02a4b` `scx_flow: move v2.2.0 under scheds/experimental`
-  - `b44d2975` `Cargo: move experimental scx_flow below scx_wd40`
+  - [`4bedb478`](https://github.com/galpt/scx/commit/4bedb478) `scx_flow: prepare v2.2.0 scalability redesign and completions support`
+  - [`69a02a4b`](https://github.com/galpt/scx/commit/69a02a4b) `scx_flow: move v2.2.0 under scheds/experimental`
+  - [`b44d2975`](https://github.com/galpt/scx/commit/b44d2975) `Cargo: move experimental scx_flow below scx_wd40`
 - benchmark harness repo branch: `main`
 - machine profile during most scripted runs: `Balanced`
 - automated Aquarium was intentionally skipped for this release snapshot because the browser harness remained noisy

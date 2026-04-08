@@ -20,9 +20,9 @@ Context:
 
 - scheduler repo branch: `scx_flow_v2_2_scalability`
 - scheduler commits:
-  - `4bedb478`
-  - `69a02a4b`
-  - `b44d2975`
+  - [`4bedb478`](https://github.com/galpt/scx/commit/4bedb478)
+  - [`69a02a4b`](https://github.com/galpt/scx/commit/69a02a4b)
+  - [`b44d2975`](https://github.com/galpt/scx/commit/b44d2975)
 - benchmark harness repo branch at publication time: `main`
 - machine profile during most scripted runs: `Balanced`
 - automated Aquarium was skipped here because the browser harness remained noisy
