@@ -10,6 +10,42 @@ This branch is intentionally separate from `main`:
 
 ## Archived Snapshots
 
+### `20260409_scx_flow_v2.2.0_release`
+
+Frozen release snapshot for the `scx_flow v2.2.0` line associated with the
+scalability redesign work and hidden shell-completions compatibility for the
+upstream CLI-completions PR.
+
+Context:
+
+- scheduler repo branch: `scx_flow_v2_2_scalability`
+- scheduler commits:
+  - `4bedb478`
+  - `69a02a4b`
+  - `b44d2975`
+- benchmark harness repo branch at publication time: `main`
+- machine profile during most scripted runs: `Balanced`
+- automated Aquarium was skipped here because the browser harness remained noisy
+- final release confidence also included manual Aquarium checks at `20000` and
+  `30000` fish
+
+Key results:
+
+| Benchmark | Snapshot | Headline |
+| --- | --- | --- |
+| Mini | `20260409_014229` | `scx_flow` keeps `173us` max latency with only `12` spikes over `100us` |
+| Mixed | `20260409_020622` | `scx_flow` strongly leads with `p99 64us` |
+| Deadline | `20260409_021205` | `scx_flow` strongly leads with `0.0000%` miss ratio and `p99 late 82.5us` |
+| IPC | `20260409_023017` | `scx_flow` improves to `p99 76us` in the archived bundle |
+| Longrun | `20260409_023839` | `scx_flow` keeps `miss 0.0071%` and `p99 68us` |
+| Fork/thread | `20260409_030010` | `scx_flow` remains faster than baseline |
+| App launch | `20260409_030314` | still a weaker spot; kept in the archive for honesty |
+| Burst | `20260409_030611` | included because the release decision did not ignore weaker tails |
+
+Browse the snapshot here:
+
+- [20260409_scx_flow_v2.2.0_release](20260409_scx_flow_v2.2.0_release/)
+
 ### `20260407_scx_flow_v2.1.0_release`
 
 Frozen release snapshot for the `scx_flow v2.1.0` line associated with the
