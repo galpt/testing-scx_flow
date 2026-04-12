@@ -6,7 +6,7 @@
 # Test script for scx_flow - runs uninstall, install, and shows status
 set -e
 
-cd /home/galpt/Desktop/Disk_D/sched-research/testing-scx_flow
+cd "$(dirname "$0")"
 
 echo "========================================"
 echo "Testing scx_flow"
