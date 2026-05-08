@@ -401,6 +401,14 @@ If you only want `scx_cosmos` vs `scx_flow`:
 sudo ./mini_benchmarker.sh --schedulers "scx_cosmos scx_flow"
 ```
 
+Pass `--hard-rt` to use the hard real-time cyclictest configuration (FIFO
+priority 99, SMP spread across all CPUs, 200us interval, histogram up to
+20us) instead of the default single-CPU 1ms interval:
+
+```bash
+sudo ./mini_benchmarker.sh --hard-rt --schedulers "scx_flow scx_bpfland scx_cosmos"
+```
+
 ### 11. Run Deadline Comparison
 
 ```bash
@@ -857,7 +865,7 @@ current test window.
 - Active scheduler checks use `/sys/kernel/sched_ext/root/ops`.
 - Your kernel may report the active scheduler as a fully qualified name such as
   `scx_flow_2.2.0_x86_64_unknown_linux_gnu`; that is still correct.
-- The current documented reference line is `scx_flow v2.2.0`.
+- The current documented reference line is `scx_flow v2.2.3`.
 - `scx_flow` is intended for general-purpose production use. Treat these
   scripts as validation and regression tools, not as a claim that one benchmark
   result alone proves correctness under every possible workload.
