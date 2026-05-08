@@ -6,6 +6,8 @@ Context:
 
 - scheduler repo branch: [`scx_flow_v2_2_scalability`](https://github.com/galpt/scx/tree/scx_flow_v2_2_scalability)
 - scheduler commits:
+  - [`d082cce3`](https://github.com/galpt/scx/commit/d082cce3) `scx_flow: v2.2.4 — fix rt_sensitive_ready predicate regression, revert idle-CPU local-reserved path`
+  - [`26d4f26b`](https://github.com/galpt/scx/commit/26d4f26b) `scx_flow: v2.2.3 — priority-aware rt_sensitive with relaxed refill threshold`
   - [`4bedb478`](https://github.com/galpt/scx/commit/4bedb478) `scx_flow: prepare v2.2.0 scalability redesign and completions support`
   - [`69a02a4b`](https://github.com/galpt/scx/commit/69a02a4b) `scx_flow: move v2.2.0 under scheds/experimental`
   - [`b44d2975`](https://github.com/galpt/scx/commit/b44d2975) `Cargo: move experimental scx_flow below scx_wd40`
@@ -20,6 +22,8 @@ Important note:
 
 - these scripted artifacts came from the final `v2.2.0` candidate immediately before the hidden `--completions` compatibility addition for upstream PR [`#3495`](https://github.com/sched-ext/scx/pull/3495)
 - the archived reports and CSVs were normalized so the public snapshot reflects the released `scx_flow_2.2.0_*` ops name
+
+The `v2.2.4` snapshot lives under [mini/v2.2.4/](mini/v2.2.4/) inside this directory.
 
 Snapshot layout:
 
@@ -36,7 +40,9 @@ Headline results:
 
 | Benchmark | Snapshot | Headline |
 | --- | --- | --- |
-| Mini | `20260409_014229` | `scx_flow` holds `173us` max latency and only `12` spikes over `100us` |
+| Mini (v2.2.0) | `20260409_014229` | `scx_flow` holds `173us` max latency and only `12` spikes over `100us` |
+| Mini (v2.2.4, 100us mode) | `20260508_174204` | `scx_flow v2.2.4` achieves `142us` max latency with only `2` spikes over `100us` |
+| Mini (v2.2.4, 20us hard RT) | `20260508_175030` | `scx_flow v2.2.4` holds `339us` max latency with `402` overflows |
 | Mixed | `20260409_020622` | `scx_flow` leads clearly with `p95 59us` and `p99 64us` |
 | Deadline | `20260409_021205` | `scx_flow` keeps `0.0000%` miss ratio with `p99 late 82.5us` |
 | IPC | `20260409_023017` | `scx_flow` lands at `p99 76us`, a strong improvement over the earlier `v2.1.0` release line |

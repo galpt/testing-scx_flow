@@ -31,8 +31,8 @@ Key results:
 | Benchmark | Snapshot | Headline |
 | --- | --- | --- |
 | Mini (v2.2.0) | `20260409_014229` | `scx_flow` keeps `173us` max latency with only `12` spikes over `100us` |
-| **Mini (v2.2.3, 100us mode)** | `20260508_115506` | **`scx_flow v2.2.3` dominates with `476us` max and only `28` spikes over `100us` — vs cosmos `880us`, bpfland `3182us`** |
-| **Mini (v2.2.3, 20us hard RT)** | `20260508_123751` | **`scx_flow v2.2.3` leads on max latency with `388us` — vs baseline `542us`, cosmos `579us`, bpfland `447us`** |
+| **Mini (v2.2.4, 100us mode)** | `20260508_174204` | **`scx_flow v2.2.4` achieves `142us` max latency with only `2` spikes over `100us` — vs cosmos `852us`, bpfland `2724us`** |
+| **Mini (v2.2.4, 20us hard RT)** | `20260508_175030` | **`scx_flow v2.2.4` holds `339us` max latency with `402` overflows — vs baseline `407us`, cosmos `227us`, bpfland `375us`** |
 | Mixed | `20260409_020622` | `scx_flow` strongly leads with `p99 64us` |
 | Deadline | `20260409_021205` | `scx_flow` strongly leads with `0.0000%` miss ratio and `p99 late 82.5us` |
 | IPC | `20260409_023017` | `scx_flow` improves to `p99 76us` in the archived bundle |
