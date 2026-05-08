@@ -6,7 +6,7 @@ Context:
 
 - scheduler repo branch: [`scx_flow_v2_2_scalability`](https://github.com/galpt/scx/tree/scx_flow_v2_2_scalability)
 - scheduler commits:
-  - [`d082cce3`](https://github.com/galpt/scx/commit/d082cce3) `scx_flow: v2.2.4 — fix rt_sensitive_ready predicate regression, revert idle-CPU local-reserved path`
+  - `d082cce3` `scx_flow: v2.2.4 — fix rt_sensitive_ready predicate regression, revert idle-CPU local-reserved path` (see [PR #3561](https://github.com/sched-ext/scx/pull/3561))
   - [`26d4f26b`](https://github.com/galpt/scx/commit/26d4f26b) `scx_flow: v2.2.3 — priority-aware rt_sensitive with relaxed refill threshold`
   - [`4bedb478`](https://github.com/galpt/scx/commit/4bedb478) `scx_flow: prepare v2.2.0 scalability redesign and completions support`
   - [`69a02a4b`](https://github.com/galpt/scx/commit/69a02a4b) `scx_flow: move v2.2.0 under scheds/experimental`

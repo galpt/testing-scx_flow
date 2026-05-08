@@ -2,9 +2,8 @@
 
 The v2.2.4 release fixes the rt_sensitive_ready predicate regression
 introduced in v2.2.3 and restores the latency lane for periodic tasks
-by reverting the idle-CPU local-reserved path. See the
-[scheduler commit](https://github.com/galpt/scx/commit/d082cce3) for
-details.
+by reverting the idle-CPU local-reserved path. See
+[PR #3561](https://github.com/sched-ext/scx/pull/3561) for details.
 
 ## Benchmark Modes
 
