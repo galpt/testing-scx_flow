@@ -865,7 +865,7 @@ current test window.
 - Active scheduler checks use `/sys/kernel/sched_ext/root/ops`.
 - Your kernel may report the active scheduler as a fully qualified name such as
   `scx_flow_2.2.0_x86_64_unknown_linux_gnu`; that is still correct.
-- The current documented reference line is `scx_flow v2.2.3`.
+- The current documented reference line is `scx_flow v2.2.4`.
 - `scx_flow` is intended for general-purpose production use. Treat these
   scripts as validation and regression tools, not as a claim that one benchmark
   result alone proves correctness under every possible workload.
