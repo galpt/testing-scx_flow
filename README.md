@@ -14,13 +14,14 @@ This branch is intentionally separate from `main`:
 
 Frozen release snapshot for the `scx_flow v2.2.0` line associated with the
 scalability redesign work and hidden shell-completions compatibility for the
-upstream CLI-completions PR. This snapshot now also contains the `v2.2.3`
+upstream CLI-completions PR. This snapshot now also contains the `v2.2.3` and `v2.2.4`
 hard RT update below.
 
 Context:
 
 - scheduler repo branch: [`scx_flow_v2_2_scalability`](https://github.com/galpt/scx/tree/scx_flow_v2_2_scalability)
 - scheduler commits:
+  - `v2.2.4`: (see [PR #3561](https://github.com/sched-ext/scx/pull/3561))
   - `v2.2.3`: [`26d4f26b`](https://github.com/galpt/scx/commit/26d4f26b)
   - `v2.2.0`: [`4bedb478`](https://github.com/galpt/scx/commit/4bedb478)
 - benchmark harness repo branch at publication time: `main`
