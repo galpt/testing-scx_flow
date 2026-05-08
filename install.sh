@@ -286,7 +286,7 @@ verify_active_scheduler() {
 main() {
     log_step "scx_flow installer"
     check_root
-    trap cleanup_build_mirror EXIT HUP INT TERM
+    trap 'rm -f "${_tmp_cfg:-}"; cleanup_build_mirror' EXIT HUP INT TERM
 
     _distro=$(detect_distro)
     log_info "Distribution : ${_distro}"

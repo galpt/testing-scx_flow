@@ -243,8 +243,7 @@ stress-ng \
     --vm "$STRESS_VM_WORKERS" \
     --vm-bytes "$STRESS_VM_BYTES" \
     --timeout "${TOTAL_STRESS_SECONDS}s" \
-    --metrics-brief \
-    --log-brief >"$STRESS_LOG" 2>&1 &
+    --metrics-brief >"$STRESS_LOG" 2>&1 &
 STRESS_PID=$!
 
 log "Launching Aquarium probe..."
@@ -273,9 +272,6 @@ cat "$STRESS_LOG" >> "$BENCHMARK_LOG"
 STRESSNG_BOGO_OPS_PER_SEC=$(awk '
 ($1 == "cpu" || $1 == "iomix" || $1 == "vm") && $6 ~ /^[0-9.]+$/ {
     sum += $6
-}
-/stress-ng: metrc:/ && ($4 == "cpu" || $4 == "iomix" || $4 == "vm") && $9 ~ /^[0-9.]+$/ {
-    sum += $9
 }
 END {
     if (sum > 0)
@@ -314,7 +310,10 @@ PY
 )
 
 for kv in "${PROBE_KV[@]}"; do
-    eval "$kv"
+    IFS='=' read -r key value <<< "$kv"
+    if [[ "$key" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+        printf -v "$key" "%s" "$value"
+    fi
 done
 
 header "Results"

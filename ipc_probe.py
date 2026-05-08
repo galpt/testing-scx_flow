@@ -11,7 +11,9 @@ import argparse
 import json
 import multiprocessing as mp
 import os
+import queue
 import socket
+import sys
 import time
 from pathlib import Path
 
@@ -169,7 +171,17 @@ def main() -> None:
     for process in processes:
         process.start()
 
-    results = [queue.get() for _ in processes]
+    results = []
+    get_timeout = args.duration_seconds + 30.0
+    for p in processes:
+        try:
+            results.append(queue.get(timeout=get_timeout))
+        except queue.Empty:
+            print(f"ERROR: worker pid={p.pid} did not produce results within {get_timeout:.0f}s",
+                  file=sys.stderr)
+            for q in processes:
+                q.kill()
+            sys.exit(1)
 
     exit_code = 0
     for process in processes:

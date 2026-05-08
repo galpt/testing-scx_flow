@@ -45,7 +45,8 @@ start_monitor_capture() {
     if [ -z "$MONITOR_FILE" ] || [ -z "$SCHEDULER_BIN" ] || [ ! -x "$SCHEDULER_BIN" ]; then
         return
     fi
-    "$SCHEDULER_BIN" --monitor "$MONITOR_INTERVAL" >"$MONITOR_FILE" 2>/dev/null &
+    local monitor_timeout=$((DURATION_SECONDS + SETTLE_SECONDS + 45))
+    timeout "${monitor_timeout}s" "$SCHEDULER_BIN" --monitor "$MONITOR_INTERVAL" >"$MONITOR_FILE" 2>/dev/null &
     MONITOR_PID="$!"
 }
 

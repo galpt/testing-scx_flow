@@ -15,6 +15,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 METRICS = [
+    ("LATENCY_OVER_20US", "Samples Over 20us (Overflows)", "lower"),
     ("LATENCY_MAX_US", "Cyclictest Max Latency (us)", "lower"),
     ("LATENCY_SPIKES_OVER_100US", "Latency Spikes >100us", "lower"),
     ("HACKBENCH_MEAN_SECONDS", "Hackbench Mean Time (s)", "lower"),
@@ -104,6 +105,7 @@ def aggregate(rows: list[dict[str, str]]) -> list[dict[str, object]]:
             "current_scheduler": representative.get("CURRENT_SCHEDULER", ""),
             "sched_ext_state": representative.get("SCHED_EXT_STATE", ""),
             "kernel_release": representative.get("KERNEL_RELEASE", ""),
+            "hard_rt": representative.get("LATENCY_HARD_RT") == "1",
             "notes": "; ".join(note for note in {item.get("COMPARE_NOTE", "") for item in items} if note),
             "log_paths": "; ".join(item.get("LOG_PATH", "") for item in items if item.get("LOG_PATH")),
         }
@@ -116,6 +118,12 @@ def aggregate(rows: list[dict[str, str]]) -> list[dict[str, object]]:
                 if (parsed := as_float(item.get(metric_key))) is not None
             ]
             entry[metric_key] = statistics.fmean(values) if values else None
+        values_total = [
+            parsed
+            for item in items
+            if (parsed := as_float(item.get("LATENCY_TOTAL_SAMPLES"))) is not None
+        ]
+        entry["LATENCY_TOTAL_SAMPLES"] = statistics.fmean(values_total) if values_total else None
         aggregated.append(entry)
 
     ordered = {
@@ -148,49 +156,63 @@ def sort_metric_entries(
 
 def write_csv(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
     csv_path = out_dir / "mini_benchmarker_summary.csv"
+    is_hard_rt = any(entry.get("hard_rt") for entry in aggregated)
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow(
-            [
-                "scheduler",
-                "display_scheduler",
-                "runs",
-                "status",
-                "sched_ext_state",
-                "current_scheduler",
-                "kernel_release",
-                "latency_max_us",
-                "latency_spikes_over_100us",
-                "hackbench_mean_seconds",
-                "sysbench_events_per_sec",
-                "stressng_bogo_ops_per_sec",
-                "notes",
-                "log_paths",
+        header = [
+            "scheduler",
+            "display_scheduler",
+            "runs",
+            "status",
+            "sched_ext_state",
+            "current_scheduler",
+            "kernel_release",
+        ]
+        if is_hard_rt:
+            header += [
+                "hard_rt_total_samples",
+                "hard_rt_overflows_over_20us",
             ]
-        )
+        header += [
+            "latency_max_us",
+            "latency_spikes_over_100us",
+            "hackbench_mean_seconds",
+            "sysbench_events_per_sec",
+            "stressng_bogo_ops_per_sec",
+            "notes",
+            "log_paths",
+        ]
+        writer.writerow(header)
         for entry in aggregated:
-            writer.writerow(
-                [
-                    entry["scheduler"],
-                    entry["display_scheduler"],
-                    entry["runs"],
-                    entry["status"],
-                    entry["sched_ext_state"],
-                    entry["current_scheduler"],
-                    entry["kernel_release"],
-                    "" if entry["LATENCY_MAX_US"] is None else f"{entry['LATENCY_MAX_US']:.2f}",
-                    "" if entry["LATENCY_SPIKES_OVER_100US"] is None else f"{entry['LATENCY_SPIKES_OVER_100US']:.2f}",
-                    "" if entry["HACKBENCH_MEAN_SECONDS"] is None else f"{entry['HACKBENCH_MEAN_SECONDS']:.3f}",
-                    "" if entry["SYSBENCH_EVENTS_PER_SEC"] is None else f"{entry['SYSBENCH_EVENTS_PER_SEC']:.2f}",
-                    "" if entry["STRESSNG_BOGO_OPS_PER_SEC"] is None else f"{entry['STRESSNG_BOGO_OPS_PER_SEC']:.2f}",
-                    entry["notes"],
-                    entry["log_paths"],
+            row = [
+                entry["scheduler"],
+                entry["display_scheduler"],
+                entry["runs"],
+                entry["status"],
+                entry["sched_ext_state"],
+                entry["current_scheduler"],
+                entry["kernel_release"],
+            ]
+            if is_hard_rt:
+                row += [
+                    "" if entry["LATENCY_TOTAL_SAMPLES"] is None else f"{entry['LATENCY_TOTAL_SAMPLES']:.0f}",
+                    "" if entry["LATENCY_OVER_20US"] is None else f"{entry['LATENCY_OVER_20US']:.0f}",
                 ]
-            )
+            row += [
+                "" if entry["LATENCY_MAX_US"] is None else f"{entry['LATENCY_MAX_US']:.2f}",
+                "" if entry["LATENCY_SPIKES_OVER_100US"] is None else f"{entry['LATENCY_SPIKES_OVER_100US']:.2f}",
+                "" if entry["HACKBENCH_MEAN_SECONDS"] is None else f"{entry['HACKBENCH_MEAN_SECONDS']:.3f}",
+                "" if entry["SYSBENCH_EVENTS_PER_SEC"] is None else f"{entry['SYSBENCH_EVENTS_PER_SEC']:.2f}",
+                "" if entry["STRESSNG_BOGO_OPS_PER_SEC"] is None else f"{entry['STRESSNG_BOGO_OPS_PER_SEC']:.2f}",
+                entry["notes"],
+                entry["log_paths"],
+            ]
+            writer.writerow(row)
     return csv_path
 
 
 def render_chart(out_dir: Path, aggregated: list[dict[str, object]]) -> tuple[Path, Path]:
+    is_hard_rt = any(entry.get("hard_rt") for entry in aggregated)
     active_metrics = [
         metric for metric in METRICS if any(entry.get(metric[0]) is not None for entry in aggregated)
     ]
@@ -201,7 +223,13 @@ def render_chart(out_dir: Path, aggregated: list[dict[str, object]]) -> tuple[Pa
     if len(active_metrics) == 1:
         axes = [axes]
 
-    for ax, (metric_key, title, direction) in zip(axes, active_metrics):
+    for ax, (metric_key, default_title, direction) in zip(axes, active_metrics):
+        # In hard-RT mode, rename the overflow metric to align with user terminology
+        if is_hard_rt and metric_key == "LATENCY_OVER_20US":
+            title = "Latency Spikes >20us"
+        else:
+            title = default_title
+
         ranked_entries = sort_metric_entries(aggregated, metric_key, direction)
         labels = [str(entry["display_scheduler"]) for entry in ranked_entries]
         values = [entry.get(metric_key) for entry in ranked_entries]
@@ -227,11 +255,16 @@ def render_chart(out_dir: Path, aggregated: list[dict[str, object]]) -> tuple[Pa
             )
 
     run_count_summary = summarize_run_counts(aggregated)
-    fig.suptitle("scx_flow Mini Benchmarker Comparison", fontsize=14, fontweight="bold")
+    is_hard_rt = any(entry.get("hard_rt") for entry in aggregated)
+    title = "scx_flow Mini Benchmarker Comparison (Hard RT mode)" if is_hard_rt else "scx_flow Mini Benchmarker Comparison"
+    subtitle = f"{run_count_summary} Charts are auto-sorted from best to worst."
+    if is_hard_rt:
+        subtitle = f"{run_count_summary} Hard RT mode: FIFO prio 99, SMP, 200us interval, histogram 20us. Target: 0 overflows."
+    fig.suptitle(title, fontsize=14, fontweight="bold")
     fig.text(
         0.5,
         0.955,
-        f"{run_count_summary} Charts are auto-sorted from best to worst.",
+        subtitle,
         ha="center",
         va="top",
         fontsize=10,
@@ -249,6 +282,32 @@ def render_chart(out_dir: Path, aggregated: list[dict[str, object]]) -> tuple[Pa
 def write_report(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
     report_path = out_dir / "mini_benchmarker_report.md"
     run_count_summary = summarize_run_counts(aggregated)
+    is_hard_rt = any(entry.get("hard_rt") for entry in aggregated)
+
+    if is_hard_rt:
+        header = "| Scheduler | Runs | Status | Total samples | Overflows >20us | Max latency (us) | Hackbench mean (s) | Sysbench events/s | Stress-ng bogo ops/s |"
+        sep = "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |"
+        note_parts = [
+            "",
+            "## Notes",
+            "",
+            "- Hard RT mode: FIFO priority 99, SMP, 200us interval, histogram up to 20us.",
+            "- `Overflows >20us` is the count of samples that exceeded the 20us threshold.",
+            "- An overflow count of 0 means all samples stayed under 20us (hard RT target satisfied).",
+            "- Lower is better for all latency and overflow metrics.",
+            "- Higher is better for sysbench events/s and stress-ng bogo ops/s.",
+        ]
+    else:
+        header = "| Scheduler | Runs | Status | sched_ext state | Current scheduler | Max latency (us) | Spikes >100us | Hackbench mean (s) | Sysbench events/s | Stress-ng bogo ops/s |"
+        sep = "| --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |"
+        note_parts = [
+            "",
+            "## Notes",
+            "",
+            "- Lower is better for latency and hackbench time.",
+            "- Higher is better for sysbench events/s and stress-ng bogo ops/s.",
+        ]
+
     lines = [
         "# Mini Benchmarker Report",
         "",
@@ -256,34 +315,43 @@ def write_report(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
         "",
         f"Run count summary: {run_count_summary}",
         "",
-        "| Scheduler | Runs | Status | sched_ext state | Current scheduler | Max latency (us) | Spikes >100us | Hackbench mean (s) | Sysbench events/s | Stress-ng bogo ops/s |",
-        "| --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
+        header,
+        sep,
     ]
     for entry in aggregated:
-        lines.append(
-            "| {scheduler} | {runs} | {status} | {sched_ext_state} | {current_scheduler} | {latency} | {spikes} | {hackbench} | {sysbench} | {stressng} |".format(
-                scheduler=entry["display_scheduler"],
-                runs=entry["runs"],
-                status=entry["status"],
-                sched_ext_state=entry["sched_ext_state"] or "unknown",
-                current_scheduler=entry["current_scheduler"] or "none",
-                latency="n/a" if entry["LATENCY_MAX_US"] is None else f"{entry['LATENCY_MAX_US']:.2f}",
-                spikes="n/a" if entry["LATENCY_SPIKES_OVER_100US"] is None else f"{entry['LATENCY_SPIKES_OVER_100US']:.2f}",
-                hackbench="n/a" if entry["HACKBENCH_MEAN_SECONDS"] is None else f"{entry['HACKBENCH_MEAN_SECONDS']:.3f}",
-                sysbench="n/a" if entry["SYSBENCH_EVENTS_PER_SEC"] is None else f"{entry['SYSBENCH_EVENTS_PER_SEC']:.2f}",
-                stressng="n/a" if entry["STRESSNG_BOGO_OPS_PER_SEC"] is None else f"{entry['STRESSNG_BOGO_OPS_PER_SEC']:.2f}",
+        if is_hard_rt:
+            lines.append(
+                "| {scheduler} | {runs} | {status} | {total} | {overflows} | {latency} | {hackbench} | {sysbench} | {stressng} |".format(
+                    scheduler=entry["display_scheduler"],
+                    runs=entry["runs"],
+                    status=entry["status"],
+                    total="n/a" if entry["LATENCY_TOTAL_SAMPLES"] is None else f"{entry['LATENCY_TOTAL_SAMPLES']:.0f}",
+                    overflows="n/a" if entry["LATENCY_OVER_20US"] is None else f"{entry['LATENCY_OVER_20US']:.0f}",
+                    latency="n/a" if entry["LATENCY_MAX_US"] is None else f"{entry['LATENCY_MAX_US']:.2f}",
+                    hackbench="n/a" if entry["HACKBENCH_MEAN_SECONDS"] is None else f"{entry['HACKBENCH_MEAN_SECONDS']:.3f}",
+                    sysbench="n/a" if entry["SYSBENCH_EVENTS_PER_SEC"] is None else f"{entry['SYSBENCH_EVENTS_PER_SEC']:.2f}",
+                    stressng="n/a" if entry["STRESSNG_BOGO_OPS_PER_SEC"] is None else f"{entry['STRESSNG_BOGO_OPS_PER_SEC']:.2f}",
+                )
             )
-        )
+        else:
+            lines.append(
+                "| {scheduler} | {runs} | {status} | {sched_ext_state} | {current_scheduler} | {latency} | {spikes} | {hackbench} | {sysbench} | {stressng} |".format(
+                    scheduler=entry["display_scheduler"],
+                    runs=entry["runs"],
+                    status=entry["status"],
+                    sched_ext_state=entry["sched_ext_state"] or "unknown",
+                    current_scheduler=entry["current_scheduler"] or "none",
+                    latency="n/a" if entry["LATENCY_MAX_US"] is None else f"{entry['LATENCY_MAX_US']:.2f}",
+                    spikes="n/a" if entry["LATENCY_SPIKES_OVER_100US"] is None else f"{entry['LATENCY_SPIKES_OVER_100US']:.2f}",
+                    hackbench="n/a" if entry["HACKBENCH_MEAN_SECONDS"] is None else f"{entry['HACKBENCH_MEAN_SECONDS']:.3f}",
+                    sysbench="n/a" if entry["SYSBENCH_EVENTS_PER_SEC"] is None else f"{entry['SYSBENCH_EVENTS_PER_SEC']:.2f}",
+                    stressng="n/a" if entry["STRESSNG_BOGO_OPS_PER_SEC"] is None else f"{entry['STRESSNG_BOGO_OPS_PER_SEC']:.2f}",
+                )
+            )
 
-    lines.extend(
-        [
-            "",
-            "## Notes",
-            "",
-            "- Lower is better for latency and hackbench time.",
-            "- Higher is better for sysbench events/s and stress-ng bogo ops/s.",
-            "- Review the raw log paths from `mini_benchmarker_summary.csv` when a row shows `failed` or `skipped`.",
-        ]
+    lines.extend(note_parts)
+    lines.append(
+        "- Review the raw log paths from `mini_benchmarker_summary.csv` when a row shows `failed` or `skipped`."
     )
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return report_path

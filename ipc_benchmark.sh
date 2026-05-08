@@ -46,7 +46,8 @@ start_monitor_capture() {
     if [ -z "$MONITOR_FILE" ] || [ -z "$SCHEDULER_BIN" ] || [ ! -x "$SCHEDULER_BIN" ]; then
         return
     fi
-    "$SCHEDULER_BIN" --monitor "$MONITOR_INTERVAL" >"$MONITOR_FILE" 2>/dev/null &
+    local monitor_timeout=$((DURATION_SECONDS + 45))
+    timeout "${monitor_timeout}s" "$SCHEDULER_BIN" --monitor "$MONITOR_INTERVAL" >"$MONITOR_FILE" 2>/dev/null &
     MONITOR_PID="$!"
 }
 
@@ -91,6 +92,7 @@ cleanup() {
         kill "$pid" >/dev/null 2>&1 || true
         wait "$pid" >/dev/null 2>&1 || true
     done
+    rm -f "${PROBE_ENV_TMP:-}"
 }
 
 trap cleanup EXIT INT TERM
@@ -249,7 +251,6 @@ python3 "$PROBE_SCRIPT" \
 stop_monitor_capture
 wait >/dev/null 2>&1 || true
 cleanup
-trap - EXIT INT TERM
 
 # shellcheck disable=SC1090
 . "$PROBE_ENV_TMP"

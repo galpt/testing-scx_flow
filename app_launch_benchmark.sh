@@ -44,6 +44,7 @@ cleanup() {
         kill "$pid" >/dev/null 2>&1 || true
         wait "$pid" >/dev/null 2>&1 || true
     done
+    rm -f "${PROBE_ENV_TMP:-}"
 }
 
 trap cleanup EXIT INT TERM
@@ -203,8 +204,6 @@ python3 "$PROBE_SCRIPT" \
 
 wait >/dev/null 2>&1 || true
 cleanup
-trap - EXIT INT TERM
-
 # shellcheck disable=SC1090
 . "$PROBE_ENV_TMP"
 rm -f "$PROBE_ENV_TMP"

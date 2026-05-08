@@ -192,9 +192,13 @@ wait_for_scheduler_state() {
     local expected="$1"
     local attempt=0
     local want="${2:-active}"
+    local pid="${3:-}"
 
     while [ "$attempt" -lt 60 ]; do
         if [ "$want" = "active" ] && scheduler_is_attached "$expected"; then
+            if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+                return 1
+            fi
             return 0
         fi
         if [ "$want" = "inactive" ] && ! scheduler_is_attached "$expected" && ! pgrep -x "$expected" >/dev/null 2>&1; then
@@ -203,7 +207,6 @@ wait_for_scheduler_state() {
         attempt=$((attempt + 1))
         sleep 0.5
     done
-
     return 1
 }
 
@@ -239,8 +242,8 @@ start_scheduler_manual() {
 
     say "Starting $scheduler directly"
     run_privileged env RUST_LOG=info "$binary_path" >"$runtime_log" 2>&1 &
-
-    if wait_for_scheduler_state "$scheduler" active; then
+    SCHEDULER_PID=$!
+    if wait_for_scheduler_state "$scheduler" active "$SCHEDULER_PID"; then
         ok "Scheduler state is ready for $scheduler"
     else
         err "Timed out waiting for scheduler state: $scheduler"
@@ -271,7 +274,7 @@ write_skipped_summary() {
     local run_index="$3"
     local note="$4"
 
-    cat > "$summary_file" <<EOF
+    cat > "$summary_file" <<'EOF'
 BENCHMARK_LABEL=${scheduler} run ${run_index}
 EXPECTED_SCHEDULER=${scheduler}
 SCHED_EXT_STATE=$(current_sched_ext_state)
@@ -399,6 +402,13 @@ while [ "$#" -gt 0 ]; do
         *) err "Unknown option: $1"; usage >&2; exit 1 ;;
     esac
 done
+
+case "$RUNS" in
+    ''|*[!0-9]*|0)
+        err "--runs must be a positive integer"
+        exit 1
+        ;;
+esac
 
 require_prereqs
 ensure_sudo_ready

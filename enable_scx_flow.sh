@@ -153,6 +153,7 @@ main() {
     require_installation
 
     [ -n "$DRY_RUN" ] && log_warn "DRY-RUN mode — no changes will be made"
+    trap 'rm -f "${_tmp_cfg:-}"' EXIT HUP INT TERM
     confirm "Configure scx.service to run scx_flow with flags '${SCX_FLAGS}'?" || exit 0
 
     configure_scx_defaults

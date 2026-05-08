@@ -90,6 +90,8 @@ Options:
   --summary-file PATH         Write machine-readable summary metrics to PATH
   --expected-scheduler NAME   Expected active scheduler, 'none', or 'any'
   --label TEXT                Optional benchmark label written into the log
+  --hard-rt                  Enable hard real-time cyclictest mode (FIFO prio 99,
+                             SMP, 200us interval, histogram up to 20us)
   -h, --help                  Show this help
 EOF
 }
@@ -111,6 +113,10 @@ while [ "$#" -gt 0 ]; do
         --label)
             BENCHMARK_LABEL="$2"
             shift 2
+            ;;
+        --hard-rt)
+            HARD_RT="1"
+            shift
             ;;
         -h|--help)
             usage
@@ -165,9 +171,12 @@ done
 log ""
 log "If required tools are missing, run: sudo ./install_benchmark_deps.sh"
 
+HARD_RT="${HARD_RT:-}"
 LATENCY_MAX_US=""
 LATENCY_SPIKES_OVER_100US=""
 LATENCY_SAMPLES=""
+LATENCY_OVER_20US=""
+LATENCY_TOTAL_SAMPLES=""
 THROUGHPUT_BENCHMARK="none"
 HACKBENCH_MEAN_SECONDS=""
 SYSBENCH_EVENTS_PER_SEC=""
@@ -185,13 +194,101 @@ CYCLICTEST_DURATION=30
 CYCLICTEST_THREADS=4
 CYCLICTEST_AFFINITY=0
 
-log "Parameters: duration=${CYCLICTEST_DURATION}s, threads=${CYCLICTEST_THREADS}, affinity=CPU${CYCLICTEST_AFFINITY}"
+if [ -n "$HARD_RT" ]; then
+    log "${GREEN}Hard real-time mode enabled.${NC}"
+    log "  - FIFO priority 99, SMP spread, 200us interval, histogram up to 20us"
+    log "  - Target: all samples under 20us (Overflows == 0)"
+fi
+
+log "Parameters: duration=${CYCLICTEST_DURATION}s, threads=${CYCLICTEST_THREADS}"
+if [ -n "$HARD_RT" ]; then
+    log "  - Mode: hard-rt (prio=99, smp, interval=200us, histogram=20us)"
+    log "  - Affinity: SMP spread (all available CPUs)"
+else
+    log "  - Affinity: CPU${CYCLICTEST_AFFINITY}"
+fi
+
 if have_cmd cyclictest; then
     CYCLICTEST_TMP=$(mktemp)
-    cyclictest -D $CYCLICTEST_DURATION -t $CYCLICTEST_THREADS -a $CYCLICTEST_AFFINITY -m -v 2>&1 \
-        | tee "$CYCLICTEST_TMP" \
-        | tee -a "$BENCHMARK_LOG"
-    read -r LATENCY_MAX_US LATENCY_SPIKES_OVER_100US LATENCY_SAMPLES <<EOF
+
+    if [ -n "$HARD_RT" ]; then
+        cyclictest \
+            --duration="${CYCLICTEST_DURATION}s" \
+            --threads="${CYCLICTEST_THREADS}" \
+            --priority=99 \
+            --smp \
+            --interval=200 \
+            --histogram=20 \
+            --mlockall \
+            --verbose 2>&1 \
+            | tee "$CYCLICTEST_TMP" \
+            | tee -a "$BENCHMARK_LOG"
+    else
+        cyclictest \
+            -D "${CYCLICTEST_DURATION}" \
+            -t "${CYCLICTEST_THREADS}" \
+            -a "${CYCLICTEST_AFFINITY}" \
+            -m -v 2>&1 \
+            | tee "$CYCLICTEST_TMP" \
+            | tee -a "$BENCHMARK_LOG"
+    fi
+
+    if [ -n "$HARD_RT" ]; then
+        # Parse cyclictest output for hard RT mode.
+        # Two output formats depending on --smp:
+        #
+        # Compact format (--smp):
+        #   # Histogram
+        #   000001 <per-CPU bin counts>
+        #   ...
+        #   # Max Latencies: <per-CPU max values>
+        #   # Histogram Overflows: <per-CPU overflow counts>
+        #
+        # Standard format (single CPU):
+        #   # Histogram
+        #   # Thread: T:0
+        #   # Total: N
+        #   # Overflows: N
+        #
+        read -r LATENCY_OVER_20US LATENCY_MAX_US <<EOF
+$(awk '
+BEGIN { overflows = 0; max_lat = 0; is_compact = 0 }
+
+/# Histogram Overflows:/ {
+    is_compact = 1
+    overflows = 0
+    for (i = 3; i <= NF; i++)
+        overflows += $i + 0
+}
+
+/^# Max Latencies:/ {
+    if (NF >= 4) {
+        for (i = 4; i <= NF; i++) {
+            val = $i + 0
+            if (val > max_lat) max_lat = val
+        }
+    }
+}
+
+/^# Overflows:[[:space:]]+[0-9]/ && !is_compact {
+    overflows = $NF + 0
+}
+
+/^# Total:[[:space:]]+[0-9]/ && !is_compact {
+    total = $NF + 0
+}
+
+END {
+    printf "%s %s\n", \
+        (overflows ? overflows : ""), \
+        (max_lat ? max_lat : "")
+}
+' "$CYCLICTEST_TMP")
+EOF
+        LATENCY_TOTAL_SAMPLES=""
+        LATENCY_SPIKES_OVER_100US=""
+    else
+        read -r LATENCY_MAX_US LATENCY_SPIKES_OVER_100US LATENCY_SAMPLES <<EOF
 $(awk '
 /^[[:space:]]*[0-9]+:/ {
     value = $NF + 0
@@ -207,12 +304,26 @@ END {
     printf "%s %s %s\n", (count ? max : ""), (count ? spikes + 0 : ""), (count ? count : "")
 }' "$CYCLICTEST_TMP")
 EOF
+    fi
+
     rm -f "$CYCLICTEST_TMP"
 
     log ""
     log "Cyclictest completed. Check results above."
-    log "  - Avg latency: lower is better"
-    log "  - Max latency: should be < 100μs for good interactive performance"
+    if [ -n "$HARD_RT" ]; then
+        if [ -n "$LATENCY_OVER_20US" ]; then
+            log "  - Total overflows (>20us, all CPUs): ${LATENCY_OVER_20US}"
+        fi
+        if [ "${LATENCY_OVER_20US:-0}" = "0" ]; then
+            log "  - All samples stayed under 20us. Hard RT target satisfied."
+        else
+            log "  - Some samples exceeded 20us. Review histogram."
+        fi
+        log "  - Max latency (across all CPUs): ${LATENCY_MAX_US:-n/a}us"
+    else
+        log "  - Avg latency: lower is better"
+        log "  - Max latency: should be < 100μs for good interactive performance"
+    fi
     if [ -n "$LATENCY_MAX_US" ]; then
         log "  - Observed max latency: ${LATENCY_MAX_US}us"
         log "  - Spikes over 100us: ${LATENCY_SPIKES_OVER_100US}"
@@ -230,15 +341,14 @@ if have_cmd hackbench; then
     log ""
 
     HACKBENCH_RUNS=5
-    HACKBENCH_ITERATIONS=100
 
-    log "Parameters: runs=${HACKBENCH_RUNS}, iterations=${HACKBENCH_ITERATIONS}"
+    log "Parameters: runs=${HACKBENCH_RUNS}"
     log ""
 
     HACKBENCH_TMP=$(mktemp)
     for i in $(seq 1 $HACKBENCH_RUNS); do
         log "--- Run $i/$HACKBENCH_RUNS ---"
-        hackbench -s $HACKBENCH_ITERATIONS -l 1000 -g 10 -f 20 2>&1 \
+        hackbench -l 1000 -g 10 2>&1 \
             | tee -a "$HACKBENCH_TMP" \
             | tee -a "$BENCHMARK_LOG"
     done
@@ -365,6 +475,9 @@ CURRENT_SCHEDULER=${CURRENT_SCHED}
 LATENCY_MAX_US=${LATENCY_MAX_US}
 LATENCY_SPIKES_OVER_100US=${LATENCY_SPIKES_OVER_100US}
 LATENCY_SAMPLES=${LATENCY_SAMPLES}
+LATENCY_HARD_RT=${HARD_RT}
+LATENCY_OVER_20US=${LATENCY_OVER_20US}
+LATENCY_TOTAL_SAMPLES=${LATENCY_TOTAL_SAMPLES}
 THROUGHPUT_BENCHMARK=${THROUGHPUT_BENCHMARK}
 HACKBENCH_MEAN_SECONDS=${HACKBENCH_MEAN_SECONDS}
 SYSBENCH_EVENTS_PER_SEC=${SYSBENCH_EVENTS_PER_SEC}

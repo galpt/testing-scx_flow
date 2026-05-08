@@ -21,6 +21,7 @@ SUDO_KEEPALIVE_PID=""
 INITIAL_SERVICE_ACTIVE=0
 RESTORE_DONE=0
 CURRENT_RUNTIME_LOG=""
+HARD_RT=""
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -47,10 +48,13 @@ Options:
   --results-dir DIR         Write this run into DIR instead of the default timestamped path
   --schedulers "LIST"       Space-separated scheduler list
                             Default: "baseline scx_cosmos scx_bpfland scx_cake scx_flow"
+  --hard-rt                 Enable hard real-time cyclictest mode (FIFO prio 99,
+                            SMP, 200us interval, histogram up to 20us)
   -h, --help                Show this help
 
 Examples:
   sudo ./mini_benchmarker.sh
+  sudo ./mini_benchmarker.sh --hard-rt
   sudo ./mini_benchmarker.sh --schedulers "scx_cosmos scx_flow"
   sudo ./mini_benchmarker.sh --runs 2 --keep-results 3
 EOF
@@ -406,7 +410,8 @@ run_single_benchmark() {
         --log-file "$log_file" \
         --summary-file "$summary_file" \
         --expected-scheduler "$expected" \
-        --label "$label"; then
+        --label "$label" \
+        ${HARD_RT:+--hard-rt}; then
         write_summary_metadata "$summary_file" "$scheduler" "$run_index" "completed" ""
         ok "Completed $label"
     else
@@ -482,6 +487,10 @@ while [ "$#" -gt 0 ]; do
                 SCHEDULERS[$i]="$(normalize_scheduler_name "${SCHEDULERS[$i]}")"
             done
             shift 2
+            ;;
+        --hard-rt)
+            HARD_RT="1"
+            shift
             ;;
         -h|--help)
             usage
