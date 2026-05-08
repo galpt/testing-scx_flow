@@ -14,14 +14,14 @@ This branch is intentionally separate from `main`:
 
 Frozen release snapshot for the `scx_flow v2.2.0` line associated with the
 scalability redesign work and hidden shell-completions compatibility for the
-upstream CLI-completions PR. This snapshot now also contains the `v2.2.2`
+upstream CLI-completions PR. This snapshot now also contains the `v2.2.3`
 hard RT update below.
 
 Context:
 
 - scheduler repo branch: [`scx_flow_v2_2_scalability`](https://github.com/galpt/scx/tree/scx_flow_v2_2_scalability)
 - scheduler commits:
-  - `v2.2.2`: [`247f39e0`](https://github.com/galpt/scx/commit/247f39e0)
+  - `v2.2.3`: [`26d4f26b`](https://github.com/galpt/scx/commit/26d4f26b)
   - `v2.2.0`: [`4bedb478`](https://github.com/galpt/scx/commit/4bedb478)
 - benchmark harness repo branch at publication time: `main`
 - machine profile during most scripted runs: `Balanced`
@@ -31,8 +31,8 @@ Key results:
 | Benchmark | Snapshot | Headline |
 | --- | --- | --- |
 | Mini (v2.2.0) | `20260409_014229` | `scx_flow` keeps `173us` max latency with only `12` spikes over `100us` |
-| **Mini (v2.2.2, 100us mode)** | `20260508_104621` | **`scx_flow v2.2.2` dominates with `299us` max and only `18` spikes over `100us` — vs cosmos `860us`, bpfland `3206us`** |
-| **Mini (v2.2.2, 20us hard RT)** | `20260508_105407` | **`scx_flow v2.2.2` is competitive with `403us` max and `623` overflows — vs cosmos `331us`, bpfland `443us`** |
+| **Mini (v2.2.3, 100us mode)** | `20260508_115506` | **`scx_flow v2.2.3` dominates with `476us` max and only `28` spikes over `100us` — vs cosmos `880us`, bpfland `3182us`** |
+| **Mini (v2.2.3, 20us hard RT)** | `20260508_123751` | **`scx_flow v2.2.3` leads on max latency with `388us` — vs baseline `542us`, cosmos `579us`, bpfland `447us`** |
 | Mixed | `20260409_020622` | `scx_flow` strongly leads with `p99 64us` |
 | Deadline | `20260409_021205` | `scx_flow` strongly leads with `0.0000%` miss ratio and `p99 late 82.5us` |
 | IPC | `20260409_023017` | `scx_flow` improves to `p99 76us` in the archived bundle |
