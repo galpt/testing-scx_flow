@@ -607,6 +607,20 @@ become active.
 By default it builds from the local `scx` tree at
 `scheds/experimental/scx_flow`.
 
+### `install_scx_flow_standalone.sh`
+
+Self-contained installer that clones the `scx` scheduler source and the
+testing repository, runs `install.sh` from the testing clone with
+`SCX_SOURCE_DIR` set, then cleans up all temporary clones. Only leaves
+`/usr/bin/scx_flow`, `/etc/systemd/system/scx.service`, and `/etc/default/scx`.
+
+Unlike `install.sh`, this script does not require a pre-existing local `scx`
+tree — it handles the full build pipeline from scratch.
+
+```bash
+./install_scx_flow_standalone.sh
+```
+
 ### `enable_scx_flow.sh`
 
 Rewrites `/etc/default/scx` for `scx_flow`, restarts `scx.service`, and fails
