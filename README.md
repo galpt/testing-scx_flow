@@ -241,6 +241,20 @@ What happens now:
 
 ## Quick Workflow
 
+### 0. Fix CachyOS Kernel Manager GUI Integration (if needed)
+
+If you use the CachyOS Kernel Manager GUI (scx-manager) to manage
+schedulers and encounter errors after running `uninstall.sh`, or if the
+GUI cannot start or apply scx_flow, run the fix script:
+
+```bash
+sudo sh fix-flow-kernel-manager-gui.sh
+```
+
+The script ensures scx_flow is properly installed, removes any stale
+scx_loader config, and stops any conflicting service. See the full
+description under `fix-flow-kernel-manager-gui.sh` below.
+
 ### 1. Install or Reinstall
 
 ```bash
@@ -873,6 +887,42 @@ Playwright Chromium build used by the Aquarium benchmark scripts.
 
 Runs an uninstall/install cycle and prints only kernel log entries from the
 current test window.
+
+### `fix-flow-kernel-manager-gui.sh`
+
+Fixes scx_flow for use with the CachyOS Kernel Manager GUI (scx-manager).
+
+The original crate-version mismatch (scx-manager compiled against
+`scx_loader` 1.1.0 while scx-tools ships 1.1.1) was fixed upstream in
+scx-manager >= 1.15.11. However, the GUI still needs the scx_flow binary
+present and no conflicting service to work correctly. This script handles
+the remaining issues:
+
+- **After uninstall.sh** — The GUI still lists scx_flow (scx_loader knows
+  about it as a built-in scheduler), but the binary at `/usr/bin/scx_flow`
+  is gone. Clicking Apply silently fails because scx_loader cannot launch
+  a missing binary. The script reinstalls scx_flow via the standalone
+  installer.
+
+- **Stale scx_loader config** — An existing `/etc/scx_loader.toml` that
+  references scx_flow with stale flags or was written by a different
+  version can cause config-related errors. The script backs up and removes
+  it so scx_loader creates a fresh default config.
+
+- **scx.service conflict** — The GUI manages schedulers through scx_loader
+  via DBUS. If scx.service is running independently, scx_flow is already
+  attached to the kernel and scx_loader cannot start a new instance
+  ("another sched_ext scheduler is already running"). The script stops
+  scx.service so scx_loader has a clean slate.
+
+Usage:
+
+```bash
+sudo sh fix-flow-kernel-manager-gui.sh
+```
+
+The script inspects the current system state and only applies the fixes
+that are needed, so running it multiple times is safe.
 
 ## Notes
 
