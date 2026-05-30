@@ -18,12 +18,9 @@
 | scx_bpfland | 3465us | 707 | 0.987 | 6617 |
 | **scx_flow v2.3.0** | **79us** | **0** | **0.631** | **6628** |
 
-![Comparison chart](mini_benchmarker_comparison.png)
+![Latency and throughput comparison across schedulers](mini_benchmarker_comparison.png)
 
-| Chart | What to look for |
-|-------|-------------------|
-| ![Latency](mini_benchmarker_comparison.png) | **Max latency and spike count** — scx_flow v2.3.0 reaches 79us max latency with zero spikes over 100us.  The next-best scheduler (scx_cosmos) shows 852us with 821 spikes at v2.2.4; at this run it reaches 4833us with 1324 spikes.  scx_flow leads by 61× on spike count. |
-| ![Hackbench](mini_benchmarker_comparison.png) | **Throughput** — hackbench time is lowest on scx_flow (0.631s mean).  stress-ng bogo ops/s is comparable across all schedulers, confirming the latency improvements come from better classification rather than reduced work. |
+scx_flow v2.3.0 reaches **79us max latency** with **zero spikes over 100us** — the next-best scheduler (cosmos) shows 4833us with 1324 spikes.  Throughput (hackbench) is also lowest on scx_flow at 0.631s mean, with stress-ng bogo ops/s comparable across all schedulers, confirming the latency gains come from better classification rather than reduced work.
 
 ## Motivation — Why the Temporal Budget Approach Wins by Design
 
