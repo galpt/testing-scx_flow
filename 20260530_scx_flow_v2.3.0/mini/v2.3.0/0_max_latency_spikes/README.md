@@ -70,16 +70,16 @@ functions).
 
 | Version | Max latency | Spikes >100us | Change from previous |
 |---------|-------------|---------------|---------------------|
-| v2.2.0 | 173us | 12 | — |
-| v2.2.4 | 142us | 2 | −18% max, −83% spikes |
+| v2.2.3 | 476us | 28 | — |
+| v2.2.4 | 142us | 2 | −70% max, −93% spikes |
 | **v2.3.0** | **79us** | **0** | **−44% max, −100% spikes** |
 
 ### Historical Context
 
 | Benchmark run | Baseline | cosmos | bpfland | **flow** | flow ver |
 |---|---|---|---|---|---|
-| [v2.2.0 release](https://github.com/galpt/testing-scx_flow/tree/benchmark-archives/20260409_scx_flow_v2.2.0_release/mini/v2.2.0/100us_max_latency_spikes) | 994us / 777 | 754us / 879 | 1281us / 265 | **173us / 12** | v2.2.0 |
-| [v2.2.4 release](https://github.com/galpt/testing-scx_flow/tree/benchmark-archives/20260409_scx_flow_v2.2.0_release/mini/v2.2.4/100us_max_latency_spikes) | 1106us / 304 | 852us / 821 | 2724us / 222 | **142us / 2** | v2.2.4 |
+| [v2.2.3](https://github.com/galpt/testing-scx_flow/tree/benchmark-archives/20260409_scx_flow_v2.2.0_release/mini/v2.2.3/100us_max_latency_spikes) | 1113us / 579 | 880us / 1117 | 3182us / 846 | **476us / 28** | v2.2.3 |
+| [v2.2.4](https://github.com/galpt/testing-scx_flow/tree/benchmark-archives/20260409_scx_flow_v2.2.0_release/mini/v2.2.4/100us_max_latency_spikes) | 1106us / 304 | 852us / 821 | 2724us / 222 | **142us / 2** | v2.2.4 |
 | **v2.3.0 (this run)** | 1001us / 524 | 4833us / 1324 | 3465us / 707 | **79us / 0** | **v2.3.0** |
 
 ## Design
