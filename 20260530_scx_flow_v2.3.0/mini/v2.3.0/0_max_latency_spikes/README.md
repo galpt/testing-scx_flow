@@ -25,6 +25,41 @@
 | ![Latency](mini_benchmarker_comparison.png) | **Max latency and spike count** — scx_flow v2.3.0 reaches 79us max latency with zero spikes over 100us.  The next-best scheduler (scx_cosmos) shows 852us with 821 spikes at v2.2.4; at this run it reaches 4833us with 1324 spikes.  scx_flow leads by 61× on spike count. |
 | ![Hackbench](mini_benchmarker_comparison.png) | **Throughput** — hackbench time is lowest on scx_flow (0.631s mean).  stress-ng bogo ops/s is comparable across all schedulers, confirming the latency improvements come from better classification rather than reduced work. |
 
+## Motivation — Why the Temporal Budget Approach Wins by Design
+
+The old scoring system (v2.2.6 and earlier) used five separate heuristics to
+decide "which lane does this task belong to?"  Each score had its own
+raise function (on certain execution patterns), decay function (on other
+patterns), thresholds, and decay rates.  The total was ~280 lines of score
+management code for a fundamentally binary decision: *is this task latency
+sensitive or not?*
+
+v2.3.0 replaces those five heuristics with one continuous measurement:
+**temporal urgency** = `bucket_1s / bucket_10ms`.
+
+### Why One Measurement Beats Five Heuristics
+
+| Problem with the old system | How temporal urgency fixes it |
+|-----------------------------|-------------------------------|
+| **Discrete thresholds create cliffs.** A task with `containment_score = 2` got full latency service; one with `containment_score = 3` got the contained lane (50us slice). One exhausted budget's difference changed everything. | **Continuous spectrum.** Urgency 0–8. A task that runs 100μs every 10ms gets urgency ~8 (high). A task that runs 5ms every 10ms gets urgency ~1 (low). Every intermediate budget pattern maps to a proportional urgency score. |
+| **Scores must be explicitly raised and decayed.** `raise_locality_score()` on short completion, `decay_locality_score()` on migration, `decay_ipc_confidence()` on long runtime. Miss one decay call and stale scores persist. | **Buckets self-decay.** Exponential half-life per window. A task that runs 20ms straight sees `bucket_10ms` saturate in one window and urgency drops automatically — no decay function needed. |
+| **Scores accumulate latency.** `latency_allowance` could take multiple interactive wakeups to reach useful levels. A newly forked task started at zero and had to "prove" its behavior. | **Urgency is immediate.** A newly forked task that wakes briefly after sleep gets full urgency credit on its first scheduling quantum — the bucket ratio reflects its actual behavior from the start. |
+| **Five scores interact in emergent ways.** Raising `ipc_confidence` also required `locality_score` (via `has_ipc_continuity_confidence`). Changing one threshold could cascade into unexpected lane assignments. | **One measurement, one formula.** Urgency depends only on the bucket ratio. No cross-score coupling. Changing the urgency thresholds (compile-time constants) has predictable, local effects. |
+| **~280 lines of score code hides bugs.** Each score function is individually simple, but the aggregate system is hard to reason about. The v2.2.6 code spent ~22 functions maintaining scores. | **~100 lines for buckets + urgency formula.** The complete classification logic fits in two functions (`temporal_decay_buckets`, `temporal_urgency`). What it does is obvious from reading the code. |
+
+### The Result
+
+The benchmark confirms what the design predicts: replacing five heuristics with
+one measurement removes classification noise.  v2.3.0 reaches **79us max
+latency** with **zero spikes over 100us** — a 44% improvement over v2.2.4's
+already-competitive 142us — while removing **366 lines (10%) of code**.
+
+This is not a tuning improvement.  It is a structural improvement: the
+temporal bucket approach is **self-correcting** (a misclassified task adjusts
+its own urgency on the next quantum), **continuous** (no binary cliffs between
+lanes), and **simpler** (one ratio instead of five scores with 22 helper
+functions).
+
 ### v2.2.x → v2.3.0 Comparison
 
 | Version | Max latency | Spikes >100us | Change from previous |
