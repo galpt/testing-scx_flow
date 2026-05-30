@@ -22,6 +22,15 @@
 
 scx_flow v2.3.0 reaches **79us max latency** with **zero spikes over 100us** — the next-best scheduler (cosmos) shows 4833us with 1324 spikes.  Throughput (hackbench) is also lowest on scx_flow at 0.631s mean, with stress-ng bogo ops/s comparable across all schedulers, confirming the latency gains come from better classification rather than reduced work.
 
+> [!NOTE]
+> These results are a snapshot of scx\_flow's behavior on a specific CPU
+> microarchitecture and workload mix.  Each scheduler in the sched-ext
+> ecosystem targets different design goals and use cases — what works
+> well on one system or workload may differ on another.  Take these
+> numbers as a reference point rather than a ranking; scx\_flow is one
+> option among many, and the right choice depends on your hardware and
+> what you are doing with it.
+
 ## Motivation — Why the Temporal Budget Approach Wins by Design
 
 The old scoring system (v2.2.6 and earlier) used five separate heuristics to
