@@ -20,7 +20,7 @@
 
 ![Latency and throughput comparison across schedulers](mini_benchmarker_comparison.png)
 
-scx_flow v2.3.0 reaches **79us max latency** with **zero spikes over 100us** — the next-best scheduler (cosmos) shows 4833us with 1324 spikes.  Throughput (hackbench) is also lowest on scx_flow at 0.631s mean, with stress-ng bogo ops/s comparable across all schedulers, confirming the latency gains come from better classification rather than reduced work.
+scx_flow v2.3.0 reaches **79us max latency** with **zero spikes over 100us** — the next-best scheduler on max latency is the tuned EEVDF baseline at 1001us (524 spikes).  Throughput (hackbench) is also lowest on scx_flow at 0.631s mean, with stress-ng bogo ops/s comparable across all schedulers, confirming the latency gains come from better classification rather than reduced work.
 
 > [!NOTE]
 > These results are a snapshot of scx\_flow's behavior on a specific CPU
