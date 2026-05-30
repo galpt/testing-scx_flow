@@ -157,7 +157,23 @@ flowchart TD
 
 ## Files
 
+### Charts and reports
+
 - [mini_benchmarker_report.md](./mini_benchmarker_report.md) — per-scheduler report
 - [mini_benchmarker_summary.csv](./mini_benchmarker_summary.csv) — raw metrics
 - [mini_benchmarker_comparison.png](./mini_benchmarker_comparison.png) — bar chart
 - [mini_benchmarker_comparison.svg](./mini_benchmarker_comparison.svg) — vector chart
+
+### Raw per-scheduler logs
+
+| Scheduler | Console log | Benchmark log | Summary |
+|-----------|-------------|---------------|---------|
+| EEVDF (baseline) | — | [logs/baseline_run1.log](./logs/baseline_run1.log) | [summaries/baseline_run1.env](./summaries/baseline_run1.env) |
+| scx_cosmos | [console/scx_cosmos_scx_cosmos_run01.log](./console/scx_cosmos_scx_cosmos_run01.log) | [logs/scx_cosmos_run1.log](./logs/scx_cosmos_run1.log) | [summaries/scx_cosmos_run1.env](./summaries/scx_cosmos_run1.env) |
+| scx_bpfland | [console/scx_bpfland_scx_bpfland_run01.log](./console/scx_bpfland_scx_bpfland_run01.log) | [logs/scx_bpfland_run1.log](./logs/scx_bpfland_run1.log) | [summaries/scx_bpfland_run1.env](./summaries/scx_bpfland_run1.env) |
+| scx_flow | [console/scx_flow_scx_flow_run01.log](./console/scx_flow_scx_flow_run01.log) | [logs/scx_flow_run1.log](./logs/scx_flow_run1.log) | [summaries/scx_flow_run1.env](./summaries/scx_flow_run1.env) |
+
+Console logs capture each scheduler's own stdout/stderr during the run.
+Benchmark logs capture the full `benchmark.sh` output (cyclictest, hackbench,
+stress-ng).  Summary env files contain the machine-readable metrics parsed
+from the raw output.

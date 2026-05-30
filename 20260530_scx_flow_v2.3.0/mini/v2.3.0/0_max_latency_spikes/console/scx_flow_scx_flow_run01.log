@@ -1,0 +1,6 @@
+08:53:25 [INFO] scx_flow 2.3.0 x86_64-unknown-linux-gnu
+08:53:25 [INFO] Starting scx_flow scheduler
+08:53:29 [INFO] autotune=latency gen=1 reserve_cap=275us shared_slice=900us refill_floor=120us preempt_budget=175us preempt_refill=225us urgent_burst_max=3 reserved_quota_max=4 reserved_lane_max=4 local_burst_max=4
+08:53:30 [INFO] autotune=latency gen=2 reserve_cap=300us shared_slice=900us refill_floor=140us preempt_budget=200us preempt_refill=250us urgent_burst_max=3 reserved_quota_max=4 reserved_lane_max=4 local_burst_max=3
+08:53:31 [INFO] autotune=latency gen=3 reserve_cap=300us shared_slice=900us refill_floor=140us preempt_budget=225us preempt_refill=250us urgent_burst_max=3 reserved_quota_max=4 reserved_lane_max=4 local_burst_max=3
+./mini_benchmarker.sh: line 63: 99011 Killed                     "$@"
