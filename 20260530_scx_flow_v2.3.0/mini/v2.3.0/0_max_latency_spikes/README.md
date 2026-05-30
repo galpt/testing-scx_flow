@@ -74,7 +74,13 @@ each score.
 | IPC | `ipc_confidence >= 4` | `urgency >= 2 + sleep/budget checks` |
 | Score functions | ~280 lines (22 helpers) | Removed |
 | Bucket counters | None | `bucket_10ms`, `bucket_100ms`, `bucket_1s` |
-| Code change | — | +100 / −450, net −350 lines |
+| **Total source lines** | **3713** | **3347** | **−366 (−10%)** |
+
+The 10% code reduction comes entirely from removing the score infrastructure:
+22 raise/decay helper functions, 5 dead volatile counters, 3 dead volatile
+tunables, and their corresponding Rust-side struct fields, format tokens,
+and delta projections.  No scheduling path logic was removed — only the
+classification signal was replaced with the simpler urgency measurement.
 
 Read the diagram like this:
 
