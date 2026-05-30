@@ -1,4 +1,4 @@
-# scx_flow v2.3.0 — Temporal Budget (IDEA A)
+# scx_flow v2.3.0 — Temporal Budget
 
 > [!NOTE]
 > scx_flow is a budget-based sched_ext CPU scheduler in use at
