@@ -5,13 +5,120 @@ resetting `scx_flow` through the shared `scx.service` systemd unit.
 
 ## How scx_flow Works
 
-`scx_flow` is a budget-based `sched_ext` scheduler with a small number of
-bounded service paths and decayed confidence signals. In plain terms:
+`scx_flow` is a budget-based `sched_ext` scheduler with a bounded service
+path architecture that has evolved across two major designs.
+
+### v2.2.6 and earlier — Score-Based Classification
+
+Up to v2.2.6, `scx_flow` used five heuristic scores to classify tasks:
+
+- `latency_allowance` (earned via interactive wakeups)
+- `latency_pressure` (earned via budget exhaustion while runnable)
+- `containment_score` (earned via repeated budget exhaustion)
+- `locality_score` (earned via short runs on the same CPU)
+- `ipc_confidence` (earned via very short blocking runs between paired tasks)
+
+Each score had its own raise/decay functions, thresholds, and decay rates.
+
+```mermaid
+flowchart TD
+    Start((Start)) --> A[Task Sleeps]
+    A --> B[Budget Refill + Signal Update]
+    B --> C[Recompute Wake Profile]
+    C --> D{Positive Budget?}
+
+    D -- No --> Shared[Shared Path]
+    D -- Yes --> E{Containment Active?}
+
+    E -- Yes --> Contained[Contained Path]
+    E -- No --> F{RT or Preempt Ready?}
+
+    F -- Yes --> RT[Preempt + Tiny Local Slice]
+    F -- No --> G{Latency Allowance or Pressure?}
+
+    G -- Yes --> Latency[Latency / Urgent Latency Path]
+    G -- No --> H{Locality or IPC Confidence?}
+
+    H -- Yes --> Local[Bounded Local Fast Path]
+    H -- No --> Reserved[Reserved Path]
+
+    RT --> Dispatch[Dispatch Arbitration]
+    Latency --> Dispatch
+    Local --> Dispatch
+    Reserved --> Dispatch
+    Contained --> Dispatch
+    Shared --> Dispatch
+
+    Dispatch --> Run[Task Runs]
+    Run --> I{Exhausted Budget?}
+
+    I -- Yes --> Bad[Raise Containment + Latency Pressure]
+    I -- No --> Good[Good Short Sleep Raises Locality and IPC Confidence]
+
+    Bad --> EndCycle([Task Stops And Sleeps Again])
+    Good --> EndCycle
+    EndCycle --> A
+```
+
+### v2.3.0 and later — Temporal Budget Urgency
+
+v2.3.0 replaces the five heuristic scores with three decaying bucket
+counters (`bucket_10ms`, `bucket_100ms`, `bucket_1s`). Urgency =
+`bucket_1s / bucket_10ms`. A task mostly idle over the last second but
+briefly active has high urgency → fast lane. A task running continuously
+has low urgency → slow lane. No score values to maintain.
+
+```mermaid
+flowchart TD
+    Start((Start)) --> A[Task Sleeps]
+    A --> B[Budget Refill + Bucket Decay]
+    B --> C((Recompute Wake Profile))
+    C --> C1[Compute urgency from bucket ratio]
+    C1 --> C2[Map urgency to lane via wake_profile bits]
+    C2 --> D{Positive Budget?}
+
+    D -- No --> Shared[Shared Path]
+    D -- Yes --> E{Containment Active?\nurgency < 2}
+
+    E -- Yes --> Contained[Contained Path]
+    E -- No --> F{RT or Preempt Ready?\nurgency >= 2}
+
+    F -- Yes --> RT[Preempt + Tiny Local Slice]
+    F -- No --> G{Latency Allowance\nor Pressure?\nurgency >= 4 or >= 2}
+
+    G -- Yes --> Latency[Latency / Urgent Latency Path]
+    G -- No --> H{Locality or IPC\nConfidence?\nurgency >= 2}
+
+    H -- Yes --> Local[Bounded Local Fast Path]
+    H -- No --> Reserved[Reserved Path]
+
+    RT --> Dispatch[Dispatch Arbitration]
+    Latency --> Dispatch
+    Local --> Dispatch
+    Reserved --> Dispatch
+    Contained --> Dispatch
+    Shared --> Dispatch
+
+    Dispatch --> Run[Task Runs]
+    Run --> I{Exhausted Budget?}
+
+    I -- Yes --> Bad[Buckets accumulate runtime.\nUrgency drops for next wake.]
+    I -- No --> Good[Buckets decay during sleep.\nUrgency preserved or rises.]
+
+    Bad --> EndCycle([Task Stops And Sleeps Again])
+    Good --> EndCycle
+    EndCycle --> A
+```
+
+### Terminology
+
+In plain terms:
 
 - sleeping tasks refill budget
 - short responsive wakeups can get bounded faster service
-- repeated good behavior strengthens locality and IPC confidence
-- repeated exhaustion raises containment and latency pressure
+- the temporal bucket approach is **self-correcting**: a task misclassified
+  as latency-sensitive will accumulate `bucket_10ms` and automatically fall
+  to a lower lane on the next enqueue
 - shared fallback work still runs so the machine does not become unfair
 
 Read the diagram like this:
