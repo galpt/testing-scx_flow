@@ -3,15 +3,23 @@
 Helper scripts for installing, enabling, monitoring, benchmarking, and
 resetting `scx_flow` through the shared `scx.service` systemd unit.
 
-## How scx_flow Works
+## How scx_flow v2.3.0 Works
 
-`scx_flow` is a budget-based `sched_ext` scheduler with a small number of
-bounded service paths and decayed confidence signals. In plain terms:
+`scx_flow` is a budget-based `sched_ext` scheduler that classifies tasks by
+their **temporal urgency** — the ratio of long-term to short-term CPU
+consumption. Unlike the previous scoring system (v2.2.6 and earlier), v2.3.0
+replaces five separate heuristic scores with three decaying bucket counters
+(`bucket_10ms`, `bucket_100ms`, `bucket_1s`). The urgency
+`bucket_1s / bucket_10ms` captures whether a task was mostly idle over the
+last second but briefly active recently — the operational definition of
+interactive.
+
+In plain terms:
 
 - sleeping tasks refill budget
-- short responsive wakeups can get bounded faster service
-- repeated good behavior strengthens locality and IPC confidence
-- repeated exhaustion raises containment and latency pressure
+- budget + bucket ratio determines the wake urgency classification
+- high urgency (brief spike, long idle) → latency lane
+- low urgency (sustained activity) → contained/shared lane
 - shared fallback work still runs so the machine does not become unfair
 
 Read the diagram like this:
@@ -26,21 +34,23 @@ Read the diagram like this:
 ```mermaid
 flowchart TD
     Start((Start)) --> A[Task Sleeps]
-    A --> B[Budget Refill + Signal Update]
-    B --> C[Recompute Wake Profile]
-    C --> D{Positive Budget?}
+    A --> B[Budget Refill + Bucket Decay]
+    B --> C((Recompute Wake Profile))
+    C --> C1[Compute urgency from bucket ratio]
+    C1 --> C2[Map urgency to lane via wake_profile bits]
+    C2 --> D{Positive Budget?}
 
     D -- No --> Shared[Shared Path]
-    D -- Yes --> E{Containment Active?}
+    D -- Yes --> E{Containment Active?\nurgency < 2}
 
     E -- Yes --> Contained[Contained Path]
-    E -- No --> F{RT or Preempt Ready?}
+    E -- No --> F{RT or Preempt Ready?\nurgency >= 2}
 
     F -- Yes --> RT[Preempt + Tiny Local Slice]
-    F -- No --> G{Latency Allowance or Pressure?}
+    F -- No --> G{Latency Allowance\nor Pressure?\nurgency >= 4 or >= 2}
 
     G -- Yes --> Latency[Latency / Urgent Latency Path]
-    G -- No --> H{Locality or IPC Confidence?}
+    G -- No --> H{Locality or IPC\nConfidence?\nurgency >= 2}
 
     H -- Yes --> Local[Bounded Local Fast Path]
     H -- No --> Reserved[Reserved Path]
@@ -55,8 +65,8 @@ flowchart TD
     Dispatch --> Run[Task Runs]
     Run --> I{Exhausted Budget?}
 
-    I -- Yes --> Bad[Raise Containment + Latency Pressure]
-    I -- No --> Good[Good Short Sleep Raises Locality and IPC Confidence]
+    I -- Yes --> Bad[Temporal buckets accumulate runtime.\nUrgency drops for next wake.]
+    I -- No --> Good[Buckets decay during sleep.\nUrgency preserved or rises.]
 
     Bad --> EndCycle([Task Stops And Sleeps Again])
     Good --> EndCycle
@@ -69,6 +79,9 @@ flowchart TD
 - it is not trying to be globally fair in one queue either
 - it tries to keep wakeups responsive while still bounding interference from
   heavy tasks
+- the temporal bucket approach is **self-correcting**: a task misclassified
+  as latency-sensitive will accumulate `bucket_10ms` and automatically fall
+  to a lower lane on the next enqueue
 
 If you are reading benchmark output, this mental model helps:
 
@@ -929,7 +942,7 @@ that are needed, so running it multiple times is safe.
 - Active scheduler checks use `/sys/kernel/sched_ext/root/ops`.
 - Your kernel may report the active scheduler as a fully qualified name such as
   `scx_flow_2.2.0_x86_64_unknown_linux_gnu`; that is still correct.
-- The current documented reference line is `scx_flow v2.2.4`.
+- The current documented reference line is `scx_flow v2.3.0`.
 - `scx_flow` is intended for general-purpose production use. Treat these
   scripts as validation and regression tools, not as a claim that one benchmark
   result alone proves correctness under every possible workload.
