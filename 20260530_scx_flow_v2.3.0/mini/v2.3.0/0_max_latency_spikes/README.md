@@ -13,7 +13,7 @@
 
 | Scheduler | Max latency | Spikes >100us | Hackbench mean (s) | Stress-ng bogo ops/s |
 |-----------|------------|---------------|-------------------|---------------------|
-| CFS/EEVDF | 1001us | 524 | 0.689 | 6709 |
+| EEVDF (CachyOS tuned) | 1001us | 524 | 0.689 | 6709 |
 | scx_cosmos | 4833us | 1324 | 0.922 | 6584 |
 | scx_bpfland | 3465us | 707 | 0.987 | 6617 |
 | **scx_flow v2.3.0** | **79us** | **0** | **0.631** | **6628** |
