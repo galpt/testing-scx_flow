@@ -3,8 +3,13 @@
 #
 # Copyright (c) 2026 Galih Tama <galpt@v.recipes>
 #
-# Install scx_flow v2.3.0 (IDEA A — Temporal Budget) from the galpt/scx
-# fork branch scx_flow-v2.3.0 for local testing before upstream PR.
+# Install scx_flow v2.3.1 (Temporal Budget + Adaptive Slice) from the
+# galpt/scx fork branch scx_flow-v2.3.1 for local testing before upstream PR.
+#
+# v2.3.1 adds the adaptive minimum slice (IDEAS-003): budget-exhausted
+# tasks that stay runnable grow their effective time slice from 50us up
+# to 1ms automatically, preventing the preemption-loop trap that caused
+# game freezes.
 #
 # This installs to /usr/bin/scx_flow (same path as the stable v2.2.6),
 # so uninstall.sh can cleanly remove it, and install_scx_flow_standalone.sh
@@ -31,7 +36,7 @@ SERVICE_NAME="scx"
 SCX_DEFAULTS="/etc/default/scx"
 SYSTEMD_SERVICE="/etc/systemd/system/scx.service"
 SCX_LOADER_SERVICE="scx_loader"
-FORK_BRANCH="scx_flow-v2.3.0"
+FORK_BRANCH="scx_flow-v2.3.1"
 FORK_REPO="https://github.com/galpt/scx.git"
 
 GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -50,7 +55,7 @@ trap 'cleanup' EXIT
 # 0. Prerequisites
 # ──────────────────────────────────────────────
 echo "============================================================"
-echo " Install scx_flow v2.3.0 (Temporal Budget — IDEA A)"
+echo " Install scx_flow v2.3.1 (Temporal Budget + Adaptive Slice)"
 echo "============================================================"
 
 step "Checking dependencies"
@@ -140,10 +145,13 @@ cleanup
 
 echo ""
 echo "============================================================"
-echo "  scx_flow v2.3.0 installed."
+echo "  scx_flow v2.3.1 installed."
 echo "============================================================"
 echo ""
-echo "  The v2.3.0 binary replaces /usr/bin/scx_flow."
+echo "  The v2.3.1 binary replaces /usr/bin/scx_flow."
+echo ""
+echo "  v2.3.1 adds the adaptive minimum slice: budget-exhausted tasks"
+echo "  that stay runnable grow their slice from 50us up to 1ms."
 echo ""
 echo "  To revert to stable v2.2.6 from upstream:"
 echo "    sudo ./install_scx_flow_standalone.sh"
