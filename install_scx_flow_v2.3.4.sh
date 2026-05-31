@@ -3,13 +3,15 @@
 #
 # Copyright (c) 2026 Galih Tama <galpt@v.recipes>
 #
-# Install scx_flow v2.3.4 (Temporal Budget + Adaptive Slice + Lockstep Fix)
+# Install scx_flow v2.3.4 (temporal budget + forced bucket decay)
 # from the galpt/scx fork branch scx_flow-v2.3.4.
 #
-# v2.3.4 adds the temporal bucket lockstep fix (IDEAS-004): when a task
-# exhausts budget and stays runnable, bucket_10ms is force-decayed each
-# quantum to break lockstep growth with bucket_1s, allowing the task to
-# escape the contained lane and make progress.
+# v2.3.4 keeps only the forced bucket decay fix: when a task exhausts
+# budget and stays runnable, bucket_10ms is right-shifted each quantum
+# to break the temporal bucket lockstep that otherwise traps tasks in
+# the contained lane permanently.  The adaptive slice mechanism from
+# v2.3.1–v2.3.3 is removed — it contributed no game benefit and caused
+# audio and mouse regressions.
 #
 # This installs to /usr/bin/scx_flow (same path as the stable v2.2.6),
 # so uninstall.sh can cleanly remove it, and install_scx_flow_standalone.sh
@@ -52,7 +54,7 @@ trap 'cleanup' EXIT
 # 0. Prerequisites
 # ──────────────────────────────────────────────
 echo "============================================================"
-echo " Install scx_flow v2.3.4 (Temporal Budget + Adaptive Slice)"
+echo " Install scx_flow v2.3.4 (Temporal Budget + Forced Bucket Decay)"
 echo "============================================================"
 
 step "Checking dependencies"
@@ -144,9 +146,11 @@ echo "============================================================"
 echo ""
 echo "  The v2.3.4 binary replaces /usr/bin/scx_flow."
 echo ""
-echo "  v2.3.4 adds the adaptive minimum slice: budget-exhausted tasks"
-echo "  that stay runnable grow their slice from 50us up to 1ms."
-echo "  This prevents the game-freeze issue found in v2.3.0."
+echo "  v2.3.4 keeps the forced bucket decay fix: budget-exhausted tasks"
+echo "  that stay runnable get bucket_10ms force-decayed each quantum,"
+echo "  breaking the lockstep that caused the v2.3.0 game-freeze."
+echo "  The adaptive slice (v2.3.1–v2.3.3) is removed — it was built"
+echo "  on the wrong root cause and caused audio/mouse regressions."
 echo ""
 echo "  To install v2.3.0 instead (temporal budget, no adaptive slice):"
 echo "    sudo ./install_scx_flow_v2.3.0.sh"
