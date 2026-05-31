@@ -3,35 +3,36 @@
 #
 # Copyright (c) 2026 Galih Tama <galpt@v.recipes>
 #
-# Install scx_flow v2.3.0 (Temporal Budget — IDEA A) from the galpt/scx
-# fork branch scx_flow-v2.3.0 for local testing before upstream PR.
+# Install scx_flow v2.3.1 (Temporal Budget + Adaptive Slice — IDEAS-003)
+# from the galpt/scx fork branch scx_flow-v2.3.1.
+#
+# v2.3.1 adds the adaptive minimum slice: budget-exhausted tasks that stay
+# runnable grow their effective time slice from 50us up to 1ms automatically,
+# preventing the preemption-loop trap that caused game freezes on v2.3.0.
 #
 # This installs to /usr/bin/scx_flow (same path as the stable v2.2.6),
 # so uninstall.sh can cleanly remove it, and install_scx_flow_standalone.sh
 # can replace it with the upstream version.
 #
 # Usage:
-#   sudo ./install_scx_flow_v2.3.0.sh
+#   sudo ./install_scx_flow_v2.3.1.sh
 #
-# To switch between v2.2.6 (stable) and v2.3.0 (experimental):
-#   # Install v2.3.0 (replaces /usr/bin/scx_flow with v2.3.0 binary)
-#   sudo ./install_scx_flow_v2.3.0.sh
+# To switch between versions:
+#   sudo ./install_scx_flow_v2.3.0.sh    # temporal budget (no adaptive slice)
+#   sudo ./install_scx_flow_v2.3.1.sh    # temporal budget + adaptive slice
+#   sudo ./install_scx_flow_standalone.sh # stable v2.2.6 from upstream
 #
-#   # Revert to stable v2.2.6 (replaces /usr/bin/scx_flow with v2.2.6)
-#   sudo ./install_scx_flow_standalone.sh
-#
-#   # Fully remove scx_flow (works for both versions)
-#   sudo ./uninstall.sh
+#   sudo ./uninstall.sh                  # remove any version
 #
 set -euo pipefail
 
-BUILD_DIR="/tmp/scx-flow-v2.3.0-build"
+BUILD_DIR="/tmp/scx-flow-v2.3.1-build"
 INSTALL_PATH="/usr/bin/scx_flow"
 SERVICE_NAME="scx"
 SCX_DEFAULTS="/etc/default/scx"
 SYSTEMD_SERVICE="/etc/systemd/system/scx.service"
 SCX_LOADER_SERVICE="scx_loader"
-FORK_BRANCH="scx_flow-v2.3.0"
+FORK_BRANCH="scx_flow-v2.3.1"
 FORK_REPO="https://github.com/galpt/scx.git"
 
 GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -50,7 +51,7 @@ trap 'cleanup' EXIT
 # 0. Prerequisites
 # ──────────────────────────────────────────────
 echo "============================================================"
-echo " Install scx_flow v2.3.0 (Temporal Budget — IDEA A)"
+echo " Install scx_flow v2.3.1 (Temporal Budget + Adaptive Slice)"
 echo "============================================================"
 
 step "Checking dependencies"
@@ -72,7 +73,7 @@ fi
 # ──────────────────────────────────────────────
 # 1. Clone and build
 # ──────────────────────────────────────────────
-step "Cloning scx_flow v2.3.0 branch"
+step "Cloning scx_flow v2.3.1 branch"
 if [ -d "$BUILD_DIR" ]; then
     rm -rf "$BUILD_DIR"
 fi
@@ -80,7 +81,7 @@ git clone --branch "$FORK_BRANCH" --depth 1 "$FORK_REPO" "$BUILD_DIR"
 info "Cloned ${FORK_BRANCH} from ${FORK_REPO}"
 cd "$BUILD_DIR"
 
-step "Building scx_flow v2.3.0"
+step "Building scx_flow v2.3.1"
 cargo build --release -p scx_flow
 info "Build complete."
 
@@ -112,10 +113,10 @@ if [ -f "$SYSTEMD_SERVICE" ]; then
     # Service file exists — just restart with the new binary
     systemctl daemon-reload
     systemctl restart "$SERVICE_NAME"
-    info "scx.service restarted with v2.3.0 binary."
+    info "scx.service restarted with v2.3.1 binary."
 else
     info "scx.service not found — creating it via install.sh."
-    TESTING_CLONE="/tmp/scx-flow-v2.3.0-testing"
+    TESTING_CLONE="/tmp/scx-flow-v2.3.1-testing"
     rm -rf "$TESTING_CLONE"
     git clone --depth 1 "https://github.com/galpt/testing-scx_flow.git" "$TESTING_CLONE"
     SCX_SOURCE_DIR="$BUILD_DIR/scheds/experimental/scx_flow" \
@@ -137,10 +138,17 @@ cleanup
 
 echo ""
 echo "============================================================"
-echo "  scx_flow v2.3.0 installed."
+echo "  scx_flow v2.3.1 installed."
 echo "============================================================"
 echo ""
-echo "  The v2.3.0 binary replaces /usr/bin/scx_flow."
+echo "  The v2.3.1 binary replaces /usr/bin/scx_flow."
+echo ""
+echo "  v2.3.1 adds the adaptive minimum slice: budget-exhausted tasks"
+echo "  that stay runnable grow their slice from 50us up to 1ms."
+echo "  This prevents the game-freeze issue found in v2.3.0."
+echo ""
+echo "  To install v2.3.0 instead (temporal budget, no adaptive slice):"
+echo "    sudo ./install_scx_flow_v2.3.0.sh"
 echo ""
 echo "  To revert to stable v2.2.6 from upstream:"
 echo "    sudo ./install_scx_flow_standalone.sh"
