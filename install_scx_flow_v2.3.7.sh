@@ -1,0 +1,171 @@
+#!/usr/bin/bash
+# SPDX-License-Identifier: GPL-2.0
+#
+# Copyright (c) 2026 Galih Tama <galpt@v.recipes>
+#
+# Install scx_flow v2.3.7 (containment_count tuning — no new fields)
+# from the galpt/scx fork branch scx_flow-v2.3.7.
+#
+# v2.3.7 tunes the v2.3.6 containment_count mechanism within scx_flow's
+# existing binary containment philosophy (no avg_runtime, no behavioral
+# classification, no new fields):
+#
+# 1. Lower FLOW_CONTAINED_MAX_RUNS from 8 to 2: pipeline threads escape
+#    containment on the third quantum (~1-2ms) instead of the ninth
+#    quantum (~7-8ms).  At 60 FPS (16.6ms/frame), the old threshold
+#    consumed 43% of a frame in containment.
+#
+# 2. Fix oscillation: containment_count is no longer reset to zero on
+#    escape.  It decays by one per non-contained quantum.  Only
+#    voluntary sleep resets it fully.  This prevents shared↔contained
+#    ping-pong for pipeline threads and ensures persistent CPU hogs
+#    eventually re-enter containment.
+#
+# This installs to /usr/bin/scx_flow (same path as the stable v2.2.6),
+# so uninstall.sh can cleanly remove it.
+#
+# Usage:
+#   sudo ./install_scx_flow_v2.3.7.sh
+#
+# To switch between versions:
+#   sudo ./install_scx_flow_v2.3.0.sh    # temporal budget (game freezes)
+#   sudo ./install_scx_flow_v2.3.7.sh    # v2.3.7 (containment_count tuning)
+#   sudo ./install_scx_flow_standalone.sh # stable v2.2.6 from upstream
+#
+#   sudo ./uninstall.sh                  # remove any version
+#
+set -euo pipefail
+
+BUILD_DIR="/tmp/scx-flow-v2.3.7-build"
+INSTALL_PATH="/usr/bin/scx_flow"
+SERVICE_NAME="scx"
+SCX_DEFAULTS="/etc/default/scx"
+SYSTEMD_SERVICE="/etc/systemd/system/scx.service"
+SCX_LOADER_SERVICE="scx_loader"
+FORK_BRANCH="scx_flow-v2.3.7"
+FORK_REPO="https://github.com/galpt/scx.git"
+
+GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+RED='\033[0;31m'; YELLOW='\033[1;33m'
+info()  { printf "${GREEN}[INFO]${NC}  %s\n" "$1"; }
+step()  { printf "\n${BOLD}${CYAN}── %s ──${NC}\n" "$1\n"; }
+warn()  { printf "${BOLD}${YELLOW}[WARN]${NC} %s\n" "$1"; }
+err()   { printf "${RED}[ERR ]${NC} %s\n" "$1" >&2; }
+
+cleanup() {
+    rm -rf "$BUILD_DIR" 2>/dev/null || true
+}
+trap 'cleanup' EXIT
+
+# ──────────────────────────────────────────────
+# 0. Prerequisites
+# ──────────────────────────────────────────────
+echo "============================================================"
+echo " Install scx_flow v2.3.7 (Containment_count Tuning)"
+echo "============================================================"
+
+step "Checking dependencies"
+for cmd in git cargo clang pkg-config; do
+    if ! command -v "$cmd" &>/dev/null; then
+        err "$cmd not found. Install build dependencies first."
+        echo "  Arch:  sudo pacman -S base-devel clang cargo pkg-config"
+        echo "  Ubuntu: sudo apt install build-essential clang cargo pkg-config libelf-dev"
+        exit 1
+    fi
+done
+info "All build dependencies found."
+
+if [ "$EUID" -ne 0 ]; then
+    err "This script must be run as root (sudo)."
+    exit 1
+fi
+
+# ──────────────────────────────────────────────
+# 1. Clone and build
+# ──────────────────────────────────────────────
+step "Cloning scx_flow v2.3.7 branch"
+if [ -d "$BUILD_DIR" ]; then
+    rm -rf "$BUILD_DIR"
+fi
+git clone --branch "$FORK_BRANCH" --depth 1 "$FORK_REPO" "$BUILD_DIR"
+info "Cloned ${FORK_BRANCH} from ${FORK_REPO}"
+cd "$BUILD_DIR"
+
+step "Building scx_flow v2.3.7"
+cargo build --release -p scx_flow
+info "Build complete."
+
+# ──────────────────────────────────────────────
+# 2. Stop conflicting loader
+# ──────────────────────────────────────────────
+step "Preparing the system"
+systemctl disable --now "$SCX_LOADER_SERVICE" 2>/dev/null || true
+info "scx_loader stopped (if it was running)."
+
+if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+    systemctl stop "$SERVICE_NAME"
+    info "scx.service stopped for binary update."
+fi
+
+# ──────────────────────────────────────────────
+# 3. Install binary to /usr/bin/scx_flow
+# ──────────────────────────────────────────────
+step "Installing to ${INSTALL_PATH}"
+cp target/release/scx_flow "$INSTALL_PATH"
+chmod 755 "$INSTALL_PATH"
+info "Installed: ${INSTALL_PATH}"
+
+# ──────────────────────────────────────────────
+# 4. Ensure scx.service is set up
+# ──────────────────────────────────────────────
+if [ -f "$SYSTEMD_SERVICE" ]; then
+    systemctl daemon-reload
+    systemctl restart "$SERVICE_NAME"
+    info "scx.service restarted with v2.3.7 binary."
+else
+    info "scx.service not found — creating it via install.sh."
+    TESTING_CLONE="/tmp/scx-flow-v2.3.7-testing"
+    rm -rf "$TESTING_CLONE"
+    git clone --depth 1 "https://github.com/galpt/testing-scx_flow.git" "$TESTING_CLONE"
+    SCX_SOURCE_DIR="$BUILD_DIR/scheds/experimental/scx_flow" \
+        sh "$TESTING_CLONE/install.sh" --force 2>&1 | grep -v "build\|cargo\|Compiling\|Finished"
+    rm -rf "$TESTING_CLONE"
+    info "scx.service created and started."
+fi
+
+# ──────────────────────────────────────────────
+# 5. Verify
+# ──────────────────────────────────────────────
+step "Verifying installation"
+INSTALLED_VER="$("$INSTALL_PATH" --version 2>/dev/null || echo 'FAILED')"
+printf "  %-20s %s\n" "scx_flow binary:" "$INSTALLED_VER"
+printf "  %-20s %s\n" "scx.service:" "$(systemctl is-active scx 2>/dev/null || echo 'FAILED')"
+printf "  %-20s %s\n" "Active scheduler:" "$(cat /sys/kernel/sched_ext/root/ops 2>/dev/null || echo 'not yet')"
+
+cleanup
+
+echo ""
+echo "============================================================"
+echo "  scx_flow v2.3.7 installed."
+echo "============================================================"
+echo ""
+echo "  The v2.3.7 binary replaces /usr/bin/scx_flow."
+echo ""
+echo "  v2.3.7 tunes the containment_count mechanism:"
+echo ""
+echo "  - Escape threshold lowered from 8 to 2 quanta (~1-2ms)"
+echo "  - Counter decays (not resets) on escape — no oscillation"
+echo "  - Full reset only on voluntary sleep"
+echo "  - No new fields, no behavioral classification"
+echo ""
+echo "  To install v2.3.0 (temporal budget, game freezes):"
+echo "    sudo ./install_scx_flow_v2.3.0.sh"
+echo ""
+echo "  To revert to stable v2.2.6 from upstream:"
+echo "    sudo ./install_scx_flow_standalone.sh"
+echo ""
+echo "  To remove scx_flow entirely:"
+echo "    sudo ./uninstall.sh"
+echo ""
+echo "  Manage:  systemctl [status|stop|start|restart] scx"
+echo "  Monitor:  scx_flow --monitor 2"
