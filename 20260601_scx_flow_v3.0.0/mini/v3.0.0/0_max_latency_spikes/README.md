@@ -87,11 +87,10 @@ Dispatch:
    an atomic reschedule, bypassing flow_dispatch entirely.)
 ```
 
-### Budget-Based vtime
+### Budget-Derived vtime
 
-The Normal DSQ uses a novel vtime formula derived entirely from the task's
-remaining budget, avoiding the unbounded-growth problem of flat runtime
-accumulation:
+The Normal DSQ derives vtime directly from the task's remaining budget,
+avoiding the unbounded-growth problem of flat runtime accumulation:
 
 ```
 vtime = FLOW_BUDGET_MAX_NS - max(0, budget_ns)
