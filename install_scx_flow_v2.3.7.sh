@@ -110,6 +110,16 @@ fi
 # ──────────────────────────────────────────────
 # 3. Install binary to /usr/bin/scx_flow
 # ──────────────────────────────────────────────
+step "Setting SCX_SCHEDULER=scx_flow in /etc/default/scx"
+if [ -f "$SCX_DEFAULTS" ] && ! grep -q "^SCX_SCHEDULER=scx_flow" "$SCX_DEFAULTS" 2>/dev/null; then
+    printf 'SCX_SCHEDULER=scx_flow\n' >> "$SCX_DEFAULTS"
+elif [ ! -f "$SCX_DEFAULTS" ]; then
+    printf 'SCX_SCHEDULER=scx_flow\n' > "$SCX_DEFAULTS"
+fi
+chmod 644 "$SCX_DEFAULTS" 2>/dev/null || true
+info "SCX_SCHEDULER set to scx_flow"
+
+step "Installing to ${INSTALL_PATH}"
 step "Installing to ${INSTALL_PATH}"
 cp target/release/scx_flow "$INSTALL_PATH"
 chmod 755 "$INSTALL_PATH"
