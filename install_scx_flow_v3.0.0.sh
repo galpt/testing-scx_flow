@@ -69,7 +69,7 @@ cargo build --release -p scx_flow
 info "Build complete."
 
 step "Preparing the system"
-systemctl disable --now "$SCX_LOADER_SERVICE" 2>/dev/null || true
+# Stop scx.service if running (it conflicts with scx_loader used by GUI)
 systemctl stop "$SERVICE_NAME" 2>/dev/null || true
 
 step "Ensuring /etc/default/scx has SCX_SCHEDULER=scx_flow"
@@ -93,7 +93,6 @@ chmod 755 "$INSTALL_PATH"
 
 if [ -f "$SYSTEMD_SERVICE" ]; then
     # Override the shell-wrapper ExecStart with direct binary execution.
-    # The shell wrapper passes empty args when env vars are unset.
     mkdir -p /etc/systemd/system/scx.service.d
     cat > /etc/systemd/system/scx.service.d/direct-exec.conf << 'EOF'
 [Service]
@@ -101,35 +100,31 @@ ExecStart=
 ExecStart=/usr/bin/scx_flow
 EOF
     systemctl daemon-reload
-    systemctl restart "$SERVICE_NAME"
-else
-    TESTING_CLONE="/tmp/scx-flow-v3.0.0-testing"
-    rm -rf "$TESTING_CLONE"
-    git clone --depth 1 "https://github.com/galpt/testing-scx_flow.git" "$TESTING_CLONE"
-    SCX_SOURCE_DIR="$BUILD_DIR/scheds/experimental/scx_flow" \
-        sh "$TESTING_CLONE/install.sh" --force 2>&1 | grep -v "build\|cargo\|Compiling\|Finished"
-    rm -rf "$TESTING_CLONE"
+fi
+
+# Stop and disable scx.service (conflicts with scx_loader used by GUI)
+systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+systemctl disable "$SERVICE_NAME" 2>/dev/null || true
+
+# Enable scx_loader for GUI management via DBUS
+if command -v scx_loader >/dev/null 2>&1; then
+    if systemctl list-unit-files scx_loader --no-legend >/dev/null 2>&1; then
+        systemctl enable --now scx_loader 2>/dev/null || true
+    fi
+    info "scx_loader is active — use the CachyOS Kernel Manager GUI to manage"
+    info "or run: scx_flow --monitor 2"
 fi
 
 step "Verifying installation"
 INSTALLED_VER="$("$INSTALL_PATH" --version 2>/dev/null || echo 'FAILED')"
 printf "  %-20s %s\n" "scx_flow binary:" "$INSTALLED_VER"
-printf "  %-20s %s\n" "scx.service:" "$(systemctl is-active scx 2>/dev/null || echo 'FAILED')"
+printf "  %-20s %s\n" "scx.service:" "$(systemctl is-active scx 2>/dev/null || echo 'stopped')"
+printf "  %-20s %s\n" "scx_loader:" "$(systemctl is-active scx_loader 2>/dev/null || echo 'inactive')"
 
-# Wait for scheduler to register (up to 5 seconds)
-_attempt=0
-_ops=""
-while [ "$_attempt" -lt 20 ]; do
-    if [ -r /sys/kernel/sched_ext/root/ops ]; then
-        _ops=$(cat /sys/kernel/sched_ext/root/ops 2>/dev/null || true)
-        if [ -n "$_ops" ]; then
-            break
-        fi
-    fi
-    _attempt=$((_attempt + 1))
-    sleep 0.25
-done
-printf "  %-20s %s\n" "Active scheduler:" "${_ops:-not yet}"
+# Show current scheduler state (may be inactive until GUI applies it)
+printf "  %-20s %s\n" "Kernel state:" "$(cat /sys/kernel/sched_ext/state 2>/dev/null || echo 'unknown')"
+_ops="$(cat /sys/kernel/sched_ext/root/ops 2>/dev/null || true)"
+printf "  %-20s %s\n" "Active sched:" "${_ops:-none}"
 
 cleanup
 
@@ -148,5 +143,7 @@ echo "  - No temporal urgency (no bucket lockstep)"
 echo "  - No classification beyond 'wakeup vs re-enqueue'"
 echo "  - ~2900 fewer lines of code than v2.3.0"
 echo ""
-echo "  Manage:  systemctl [status|stop|start|restart] scx"
+echo "  The scheduler is managed by scx_loader (DBUS).  Open the CachyOS"
+echo "  Kernel Manager GUI and click Apply to start scx_flow v3.0.0."
+echo ""
 echo "  Monitor:  scx_flow --monitor 2"
