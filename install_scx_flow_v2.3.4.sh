@@ -145,7 +145,19 @@ step "Verifying installation"
 INSTALLED_VER="$("$INSTALL_PATH" --version 2>/dev/null || echo 'FAILED')"
 printf "  %-20s %s\n" "scx_flow binary:" "$INSTALLED_VER"
 printf "  %-20s %s\n" "scx.service:" "$(systemctl is-active scx 2>/dev/null || echo 'FAILED')"
-printf "  %-20s %s\n" "Active scheduler:" "$(cat /sys/kernel/sched_ext/root/ops 2>/dev/null || echo 'not yet')"
+ATTEMPT=0
+SCHED_OPS=""
+while [ "$ATTEMPT" -lt 20 ]; do
+    if [ -r /sys/kernel/sched_ext/root/ops ]; then
+        SCHED_OPS=$(cat /sys/kernel/sched_ext/root/ops 2>/dev/null || true)
+        if [ -n "$SCHED_OPS" ]; then
+            break
+        fi
+    fi
+    ATTEMPT=$((ATTEMPT + 1))
+    sleep 0.25
+done
+printf "  %-20s %s\n" "Active scheduler:" "${SCHED_OPS:-not yet}"
 
 cleanup
 
