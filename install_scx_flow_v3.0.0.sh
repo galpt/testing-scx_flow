@@ -71,6 +71,21 @@ step "Preparing the system"
 systemctl disable --now "$SCX_LOADER_SERVICE" 2>/dev/null || true
 systemctl stop "$SERVICE_NAME" 2>/dev/null || true
 
+step "Ensuring /etc/default/scx has SCX_SCHEDULER=scx_flow"
+if [ -f "$SCX_DEFAULTS" ] && ! grep -q "^SCX_SCHEDULER=scx_flow" "$SCX_DEFAULTS" 2>/dev/null; then
+    if [ "$(wc -l < "$SCX_DEFAULTS" 2>/dev/null || echo 0)" -le 1 ]; then
+        # File is empty or nearly empty — write the required line
+        printf 'SCX_SCHEDULER=scx_flow\n' > "$SCX_DEFAULTS"
+    else
+        # Append to existing content
+        printf 'SCX_SCHEDULER=scx_flow\n' >> "$SCX_DEFAULTS"
+    fi
+elif [ ! -f "$SCX_DEFAULTS" ]; then
+    printf 'SCX_SCHEDULER=scx_flow\n' > "$SCX_DEFAULTS"
+fi
+chmod 644 "$SCX_DEFAULTS" 2>/dev/null || true
+info "SCX_SCHEDULER set to scx_flow"
+
 step "Installing to ${INSTALL_PATH}"
 cp target/release/scx_flow "$INSTALL_PATH"
 chmod 755 "$INSTALL_PATH"
