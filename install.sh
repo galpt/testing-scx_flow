@@ -213,7 +213,7 @@ After=multi-user.target
 [Service]
 Type=simple
 EnvironmentFile=/etc/default/scx
-ExecStart=/bin/sh -c 'exec ${SCX_SCHEDULER_OVERRIDE:-$SCX_SCHEDULER} ${SCX_FLAGS_OVERRIDE:-$SCX_FLAGS}'
+ExecStart=/usr/bin/scx_flow
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

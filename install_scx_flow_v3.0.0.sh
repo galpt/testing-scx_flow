@@ -92,6 +92,14 @@ cp target/release/scx_flow "$INSTALL_PATH"
 chmod 755 "$INSTALL_PATH"
 
 if [ -f "$SYSTEMD_SERVICE" ]; then
+    # Override the shell-wrapper ExecStart with direct binary execution.
+    # The shell wrapper passes empty args when env vars are unset.
+    mkdir -p /etc/systemd/system/scx.service.d
+    cat > /etc/systemd/system/scx.service.d/direct-exec.conf << 'EOF'
+[Service]
+ExecStart=
+ExecStart=/usr/bin/scx_flow
+EOF
     systemctl daemon-reload
     systemctl restart "$SERVICE_NAME"
 else
