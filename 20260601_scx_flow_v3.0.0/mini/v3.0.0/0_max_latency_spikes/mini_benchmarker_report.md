@@ -4,15 +4,17 @@ This report aggregates the latest comparison run across the selected schedulers.
 
 Run count summary: Averages over 1 run per scheduler.
 
-| Scheduler | Runs | Status | sched_ext state | Current scheduler | Max latency (us) | Spikes >100us | Hackbench mean (s) | Sysbench events/s | Stress-ng bogo ops/s |
-| --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| baseline (7.0.10-2-cachyos) | 1 | completed | disabled | none | 1255.00 | 297.00 | 0.672 | n/a | 6702.06 |
-| scx_cosmos | 1 | completed | enabled | cosmos_1.1.1_x86_64_unknown_linux_gnu | 4807.00 | 274.00 | 0.922 | n/a | 6566.17 |
-| scx_bpfland | 1 | completed | enabled | bpfland_1.1.1_x86_64_unknown_linux_gnu | 2388.00 | 489.00 | 0.993 | n/a | 6609.48 |
-| scx_flow | 1 | completed | enabled | scx_flow_3.0.0_x86_64_unknown_linux_gnu | 272.00 | 16.00 | 0.799 | n/a | 6628.39 |
+| Scheduler | Runs | Status | sched_ext state | Current scheduler | Max latency (us) | Spikes >100us | Schbench wakeup P99 (us) | Schbench wakeup max (us) | Hackbench mean (s) | Sysbench events/s | Stress-ng bogo ops/s | Schbench RPS |
+| --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| baseline (7.0.10-2-cachyos) | 1 | completed | disabled | none | 1138.00 | 295.00 | 4120.00 | 22126.00 | 0.674 | n/a | 6680.68 | 1410.37 |
+| scx_cosmos | 1 | completed | enabled | cosmos_1.1.1_x86_64_unknown_linux_gnu | 5980.00 | 807.00 | 2092.00 | 16003.00 | 0.920 | n/a | 6606.06 | 1220.37 |
+| scx_bpfland | 1 | completed | enabled | bpfland_1.1.1_x86_64_unknown_linux_gnu | 3112.00 | 959.00 | 4060.00 | 26793.00 | 1.020 | n/a | 6610.46 | 1125.20 |
+| scx_flow | 1 | completed | enabled | scx_flow_3.0.2_x86_64_unknown_linux_gnu | 333.00 | 44.00 | 1582.00 | 2994.00 | 0.838 | n/a | 6620.99 | 1148.90 |
 
 ## Notes
 
-- Lower is better for latency and hackbench time.
-- Higher is better for sysbench events/s and stress-ng bogo ops/s.
+- Lower is better for latency, spikes, hackbench time, and schbench wakeup latency.
+- Higher is better for sysbench events/s, stress-ng bogo ops/s, and schbench RPS.
+- Schbench measures scheduler tail wakeup latency (Facebook/Meta standard metric).
+  Lower P99 and max indicate better scheduler responsiveness under load.
 - Review the raw log paths from `mini_benchmarker_summary.csv` when a row shows `failed` or `skipped`.
