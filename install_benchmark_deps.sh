@@ -24,6 +24,7 @@ REQUIRED_PACKAGES=(
     stress-ng
     perf
     sysbench
+    schbench
     python-matplotlib
 )
 

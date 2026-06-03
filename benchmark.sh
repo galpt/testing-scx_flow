@@ -182,6 +182,10 @@ HACKBENCH_MEAN_SECONDS=""
 SYSBENCH_EVENTS_PER_SEC=""
 SYSBENCH_AVG_LATENCY_MS=""
 STRESSNG_BOGO_OPS_PER_SEC=""
+SCHBENCH_WAKEUP_P99=""
+SCHBENCH_WAKEUP_MAX=""
+SCHBENCH_REQUEST_P99=""
+SCHBENCH_RPS=""
 SCHEDULER_MONITOR_LINE=""
 
 header "1. Cyclictest (Latency Benchmark)"
@@ -432,12 +436,58 @@ else
     log "Install benchmark dependencies first: sudo ./install_benchmark_deps.sh"
 fi
 
-header "4. System Load (Quick Check)"
+header "4. Schbench (Scheduler Tail Latency)"
+log "Running schbench for scheduler wakeup latency..."
+log "This measures tail latency (P99) of scheduler wakeups — the key"
+log "metric Facebook uses to evaluate scheduler performance."
+log ""
+
+# Default: 2 message threads, 16 workers each, 30s runtime
+SCHBENCH_MSGS=2
+SCHBENCH_WORKERS=16
+SCHBENCH_RUNTIME="${CYCLICTEST_DURATION}"
+
+log "Parameters: message_threads=${SCHBENCH_MSGS} workers_per_msg=${SCHBENCH_WORKERS} runtime=${SCHBENCH_RUNTIME}s"
+log ""
+
+if have_cmd schbench; then
+    SCHBENCH_TMP=$(mktemp)
+    schbench -m "${SCHBENCH_MSGS}" -t "${SCHBENCH_WORKERS}" -r "${SCHBENCH_RUNTIME}" 2>&1 \
+        | tee "$SCHBENCH_TMP" \
+        | tee -a "$BENCHMARK_LOG"
+
+    # Parse Wakeup Latency P99 and max
+    SCHBENCH_WAKEUP_P99=$(awk '/Wakeup Latencies/,/Request Latencies/' "$SCHBENCH_TMP" \
+        | grep '\* 99\.0th:' | awk '{print $3}')
+    SCHBENCH_WAKEUP_MAX=$(awk '/Wakeup Latencies/,/Request Latencies/' "$SCHBENCH_TMP" \
+        | grep 'max=' | sed 's/.*max=//' | sed 's/,.*//')
+
+    # Parse Request Latency P99
+    SCHBENCH_REQUEST_P99=$(awk '/Request Latencies/,/RPS percentiles/' "$SCHBENCH_TMP" \
+        | grep '\* 99\.0th:' | awk '{print $3}')
+
+    # Parse average RPS
+    SCHBENCH_RPS=$(grep 'average rps:' "$SCHBENCH_TMP" | awk '{print $NF}')
+
+    rm -f "$SCHBENCH_TMP"
+
+    log ""
+    log "Schbench completed. Key metrics:"
+    log "  - Wakeup Latency P99: ${SCHBENCH_WAKEUP_P99:-N/A} us (lower is better)"
+    log "  - Wakeup Latency max: ${SCHBENCH_WAKEUP_MAX:-N/A} us (lower is better)"
+    log "  - Request Latency P99: ${SCHBENCH_REQUEST_P99:-N/A} us"
+    log "  - Avg RPS: ${SCHBENCH_RPS:-N/A}"
+else
+    log "${YELLOW}Skipping schbench: command not found.${NC}"
+    log "Install benchmark dependencies: sudo ./install_benchmark_deps.sh"
+fi
+
+header "5. System Load (Quick Check)"
 log "System load averages:"
 uptime | tee -a "$BENCHMARK_LOG"
 log ""
 
-header "5. Scheduler Internal Stats"
+header "6. Scheduler Internal Stats"
 if [ "$EXPECTED_SCHEDULER" != "none" ] && [ "$EXPECTED_SCHEDULER" != "any" ]; then
     SCHEDULER_MONITOR_LINE=$(capture_scheduler_monitor_line "$EXPECTED_SCHEDULER")
     if [ -n "$SCHEDULER_MONITOR_LINE" ]; then
@@ -483,6 +533,10 @@ HACKBENCH_MEAN_SECONDS=${HACKBENCH_MEAN_SECONDS}
 SYSBENCH_EVENTS_PER_SEC=${SYSBENCH_EVENTS_PER_SEC}
 SYSBENCH_AVG_LATENCY_MS=${SYSBENCH_AVG_LATENCY_MS}
 STRESSNG_BOGO_OPS_PER_SEC=${STRESSNG_BOGO_OPS_PER_SEC}
+SCHBENCH_WAKEUP_P99=${SCHBENCH_WAKEUP_P99}
+SCHBENCH_WAKEUP_MAX=${SCHBENCH_WAKEUP_MAX}
+SCHBENCH_REQUEST_P99=${SCHBENCH_REQUEST_P99}
+SCHBENCH_RPS=${SCHBENCH_RPS}
 SCHEDULER_MONITOR_LINE=${SCHEDULER_MONITOR_LINE}
 LOG_PATH=${BENCHMARK_LOG}
 EOF
