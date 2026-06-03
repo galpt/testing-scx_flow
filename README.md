@@ -6,7 +6,7 @@ resetting `scx_flow` through the shared `scx.service` systemd unit.
 ## How scx_flow Works
 
 `scx_flow` is a budget-based `sched_ext` scheduler with a bounded service
-path architecture that has evolved across two major designs.
+path architecture that has evolved across three major designs.
 
 ### v2.2.6 and earlier — Score-Based Classification
 
@@ -110,30 +110,78 @@ flowchart TD
     EndCycle --> A
 ```
 
+### v3.0.2 — Budget-Driven, Zero Heuristic Classification
+
+v3.0.2 removes all heuristic classification entirely.  No temporal urgency
+buckets, no containment lanes, no score signals.  Every scheduling signal is
+kernel-verified (`nr_cpus_allowed`, budget derived from kernel-tracked sleep
+time) and consumed within one quantum.
+
+Architecture:
+
+```mermaid
+flowchart TD
+    Start((Wakeup)) --> C{Budget >= 50us?}
+
+    C -- Yes --> Preempt[FLOW_DSQ_LOCAL_ON + PREEMPT\nImmediate dispatch + IPI]
+    C -- No --> Head[FLOW_DSQ_LOCAL_ON\nHead-of-queue, no IPI]
+
+    Preempt --> Run[Task Runs]
+    Head --> Run
+
+    Run --> D{Slice expires\nbefore sleep?}
+
+    D -- No --> Sleep([Sleep → refill budget])
+    D -- Yes --> E{Non-migratable\n(nr_cpus_allowed == 1)?}
+
+    E -- Yes --> Pinned[FLOW_PINNED_DSQ_BASE | cpu\nPer-CPU FIFO, checked first]
+    E -- No --> Norm[FLOW_NORMAL_DSQ\nVtime-ordered, 50us slice]
+
+    Pinned --> Dispatch[Dispatch]
+    Norm --> Dispatch
+
+    Dispatch --> Run
+```
+
+| Component | Mechanism | Purpose |
+|-----------|-----------|---------|
+| **Wakeup fast path** | `FLOW_DSQ_LOCAL_ON` + `SCX_ENQ_PREEMPT` | Immediate dispatch + IPI for tasks with budget ≥ 50μs |
+| **Normal DSQ** | Single vtime-ordered DSQ | All non-wakeup re-enqueues, ordered by budget |
+| **Pinned DSQ** | Per-CPU FIFO (`FLOW_PINNED_DSQ_BASE \| cpu`) | Non-migratable tasks bypass global contention |
+
+### v3.0.1 — First-Run Budget Boost
+
+Transitional release adding initial budget for new tasks, SMT-aware idle core
+selection, and boosted preemption on the first wakeup.
+
 ### Terminology
 
 In plain terms:
 
-- sleeping tasks refill budget
-- short responsive wakeups can get bounded faster service
-- the temporal bucket approach is **self-correcting**: a task misclassified
-  as latency-sensitive will accumulate `bucket_10ms` and automatically fall
-  to a lower lane on the next enqueue
-- shared fallback work still runs so the machine does not become unfair
+- sleeping tasks refill budget; longer sleep → more budget → earlier dispatch
+- tasks with budget ≥ 50μs get an IPI preemption on wakeup
+- tasks pinned to a single CPU (`-a 0`, `pthread_setaffinity_np`) get their
+  own per-CPU DSQ and bypass the global queue entirely
+- every task runs with exactly 50μs slices, bounding worst-case wakeup latency
+- the vtime signal is bounded to [0, 2000μs] — no unbounded accumulator
 
 ### Why This Matters
 
-- `scx_flow` is not a plain FIFO scheduler
-- it is not trying to be globally fair in one queue either
-- it tries to keep wakeups responsive while still bounding interference from
-  heavy tasks
+- `scx_flow` v3.0.2 is not a heuristic classification system — there are no
+  temporal buckets, containment lanes, or score signals
+- it is not a plain FIFO scheduler either — budget-derived vtime separates
+  interactive tasks (longer sleep → higher budget → lower vtime → earlier
+  dispatch) from bulk workers
+- the bounded vtime guarantees deterministic behavior: no priority inversion
+  from accumulated runtime, no tunables to misconfigure
 
 If you are reading benchmark output, this mental model helps:
 
-- strong latency numbers usually mean the bounded lanes are doing their job
-- strong FPS numbers usually mean the locality-friendly and reserved paths are
-  feeding short bursts well
-- bad regressions often mean tasks are being classified into the wrong path
+- strong latency numbers mean the 50μs slice and wakeup preemption are working
+- strong throughput numbers mean the budget signal is correctly prioritizing
+  interactive tasks over bulk workers
+- consistent behavior across runs is expected — there is no heuristic
+  classification to vary between runs
 
 ## What You Should Care About
 
