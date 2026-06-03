@@ -1,13 +1,12 @@
-# scx_flow v3.0 — Budget-Driven Scheduling, Zero Heuristics
+# scx_flow v3.0.2 — Budget-Driven Scheduling, Zero Heuristics
 
 > [!NOTE]
-> scx_flow is a budget-based sched_ext CPU scheduler in use at
-> [v.recipes](https://v.recipes).  v3.0 replaces the 5-lane
+> scx_flow is a budget-based sched_ext CPU scheduler.  v3.0.2 replaces the 5-lane
 > classification system (temporal urgency, containment, score-based
 > signals) with a minimal architecture: a wakeup fast path via
 > `FLOW_DSQ_LOCAL_ON`, a single vtime-ordered DSQ, and a per-CPU
 > pinned DSQ for non-migratable tasks.  Net change:
-> **−2,305 lines of code (−68%) vs v2.3.0**.
+> **−2,271 lines of code (−67%) vs v2.3.0**.
 
 ## Results
 
@@ -16,11 +15,11 @@
 | EEVDF (CachyOS tuned) | 1138μs | 295 | 0.674 | 6681 |
 | scx_cosmos | 5980μs | 807 | 0.920 | 6606 |
 | scx_bpfland | 3112μs | 959 | 1.020 | 6610 |
-| **scx_flow v3.0** | **333μs** | **44** | **0.838** | **6621** |
+| **scx_flow v3.0.2** | **333μs** | **44** | **0.838** | **6621** |
 
 ![Latency and throughput comparison across schedulers](mini_benchmarker_comparison.png)
 
-scx_flow v3.0 achieves **333μs max latency** with **44 spikes over 100μs** — best-in-test on both latency metrics by a wide margin (3.4× better max latency than baseline). Hackbench throughput at 0.838s is within 24% of the tuned EEVDF baseline, with zero heuristic classification.
+scx_flow v3.0.2 achieves **333μs max latency** with **44 spikes over 100μs** — best-in-test on both latency metrics by a wide margin (3.4× better max latency than baseline). Hackbench throughput at 0.838s is within 24% of the tuned EEVDF baseline, with zero heuristic classification.
 
 > [!NOTE]
 > These results reflect one CPU microarchitecture and workload mix.
@@ -35,13 +34,13 @@ scx_flow v3.0 achieves **333μs max latency** with **44 spikes over 100μs** —
 | v2.2.3 | 476μs | 28 | 3,713 | — |
 | v2.2.4 | 142μs | 2 | — | −70% max, −93% spikes |
 | v2.3.0 | 79μs | 0 | 3,373 | −44% max |
-| **v3.0** | **333μs** | **44** | **1,068** | **−68% code, zero heuristics** |
+| **v3.0.2** | **333μs** | **44** | **1,102** | **−67% code, zero heuristics** |
 
 | Benchmark run | Baseline | cosmos | bpfland | **flow** | flow ver |
 |---|---|---|---|---|---|
 | [v2.2.3](https://github.com/galpt/testing-scx_flow/tree/benchmark-archives/20260409_scx_flow_v2.2.0_release/mini/v2.2.3/100us_max_latency_spikes) | 1113μs / 579 | 880μs / 1117 | 3182μs / 846 | **476μs / 28** | v2.2.3 |
 | [v2.3.0](https://github.com/galpt/testing-scx_flow/tree/benchmark-archives/20260530_scx_flow_v2.3.0/mini/v2.3.0/0_max_latency_spikes) | 1001μs / 524 | 4833μs / 1324 | 3465μs / 707 | **79μs / 0** | v2.3.0 |
-| [v3.0 final](https://github.com/galpt/testing-scx_flow/tree/benchmark-archives/20260601_scx_flow_v3.0.0/mini/v3.0.0/0_max_latency_spikes) | 1138μs / 295 | 5980μs / 807 | 3112μs / 959 | **333μs / 44** | **v3.0** |
+| [v3.0.2 final](https://github.com/galpt/testing-scx_flow/tree/benchmark-archives/20260601_scx_flow_v3.0.0/mini/v3.0.0/0_max_latency_spikes) | 1138μs / 295 | 5980μs / 807 | 3112μs / 959 | **333μs / 44** | **v3.0.2** |
 
 ## Why This Architecture Works
 
@@ -51,7 +50,7 @@ score, locality score, IPC confidence — each with its own raise/decay/escape
 helpers and per-CPU burst counters.  That is ~1,650 lines of BPF code for
 the question "which of five lanes does this task belong to?"
 
-v3.0 replaces the entire classification pipeline with a budget signal and
+v3.0.2 replaces the entire classification pipeline with a budget signal and
 three data structures:
 
 | Path | Mechanism | Purpose |
@@ -68,12 +67,12 @@ classification v2.3.0 achieved via its urgent-latency lane, using the
 budget signal directly — no urgency signals, temporal buckets, or score
 thresholds.
 
-| Problem with v2.3.0's 5-lane system | How v3.0 fixes it |
+| Problem with v2.3.0's 5-lane system | How v3.0.2 fixes it |
 |--------------------------------------|-------------------|
 | **Containment traps legitimate threads.** Pipeline threads (game, audio, compositor) that exhaust budget enter containment with 50μs slices, causing multi-second freezes. | **No containment.** Budget-exhausted tasks go to the vtime DSQ with higher vtime (lower priority) but are never frozen. Forward progress guaranteed. |
 | **Score interaction bugs.** 13 wake_profile bits, 3 starvation counters, 4 burst limits — changing one threshold cascades unpredictably. | **0 bits, 0 counters.** One DSQ, one slice, one budget signal. No starvation counters, no anti-starvation rescue, no burst limits. |
 | **Temporal urgency regresses on back-to-back dispatch.** Pipeline threads that stay runnable across quanta have 1:1 bucket growth → urgency stuck at 0 → trapped in containment. | **No temporal buckets.** Classification uses budget (a single kernel-maintained signal) rather than a heuristic from decaying accumulators. |
-| **~2,900 lines of BPF and Rust for five lanes.** Every new lane adds enqueue paths, dispatch checks, starvation recovery, and per-CPU state. | **~1,000 lines total.** 590 lines of BPF, 262 of Rust, 103 of stats. The dispatch function has 2 DSQ checks vs v2.3.0's 9–12. |
+| **~2,900 lines of BPF and Rust for five lanes.** Every new lane adds enqueue paths, dispatch checks, starvation recovery, and per-CPU state. | **~1,100 lines total.** 616 lines of BPF, 261 of Rust, 107 of stats. The dispatch function has 2 DSQ checks vs v2.3.0's 9–12. |
 | **Containment bandaids compound.** Affinity escape (v2.3.5), dispatch priority fix (v2.3.6), containment count tuning (v2.3.7) — three fixes for one flawed lane. | **Zero bandaids.** The architecture removed classification entirely, not patched it. |
 
 ## Architecture
@@ -147,13 +146,13 @@ BTF-dependent weak-volatile compat layer:
 ### Code Reduction
 
 ```
-File            v2.3.0    v3.0         Δ
-main.bpf.c      1,614      495     −1,119
-intf.h            166       82        −84
+File            v2.3.0    v3.0.2        Δ
+main.bpf.c      1,614      616       −998
+intf.h            166       91        −75
 main.rs         1,043      261       −782
-stats.rs          523      103       −420
+stats.rs          523      107       −416
 Cargo.toml         27       27          0
-Total            3,373      968     −2,405 (−71%)
+Total            3,373    1,102     −2,271 (−67%)
 ```
 
 ### What Was Removed
@@ -167,8 +166,6 @@ Total            3,373      968     −2,405 (−71%)
 - 40+ volatile counters (starvation rounds, burst counters, rescue dispatches)
 - 13 wake_profile bits (URGENT_LATENCY, LATENCY_LANE, RESERVED_PRIORITY, etc.)
 - 12 internal tuning parameters (contained_starvation_max, urgent_burst_max, etc.)
-- CPU reservation and topology-detection code (commented out, removed in cleanup)
-- Quantum-priority heuristic (last_quantum_ns tracker, removed when it tested neutral)
 - Unconditional preemption on all wakeups (replaced by budget-based selectivity)
 
 ## Benchmark Conditions
