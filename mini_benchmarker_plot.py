@@ -18,9 +18,12 @@ METRICS = [
     ("LATENCY_OVER_20US", "Samples Over 20us (Overflows)", "lower"),
     ("LATENCY_MAX_US", "Cyclictest Max Latency (us)", "lower"),
     ("LATENCY_SPIKES_OVER_100US", "Latency Spikes >100us", "lower"),
+    ("SCHBENCH_WAKEUP_P99", "Schbench Wakeup P99 (us)", "lower"),
+    ("SCHBENCH_WAKEUP_MAX", "Schbench Wakeup Max (us)", "lower"),
     ("HACKBENCH_MEAN_SECONDS", "Hackbench Mean Time (s)", "lower"),
     ("SYSBENCH_EVENTS_PER_SEC", "Sysbench Events/s", "higher"),
     ("STRESSNG_BOGO_OPS_PER_SEC", "Stress-ng Bogo Ops/s", "higher"),
+    ("SCHBENCH_RPS", "Schbench Avg RPS", "higher"),
 ]
 
 COLOR_BY_SCHEDULER = {
@@ -176,9 +179,12 @@ def write_csv(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
         header += [
             "latency_max_us",
             "latency_spikes_over_100us",
+            "schbench_wakeup_p99_us",
+            "schbench_wakeup_max_us",
             "hackbench_mean_seconds",
             "sysbench_events_per_sec",
             "stressng_bogo_ops_per_sec",
+            "schbench_rps",
             "notes",
             "log_paths",
         ]
@@ -201,9 +207,12 @@ def write_csv(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
             row += [
                 "" if entry["LATENCY_MAX_US"] is None else f"{entry['LATENCY_MAX_US']:.2f}",
                 "" if entry["LATENCY_SPIKES_OVER_100US"] is None else f"{entry['LATENCY_SPIKES_OVER_100US']:.2f}",
+                "" if entry["SCHBENCH_WAKEUP_P99"] is None else f"{entry['SCHBENCH_WAKEUP_P99']:.2f}",
+                "" if entry["SCHBENCH_WAKEUP_MAX"] is None else f"{entry['SCHBENCH_WAKEUP_MAX']:.2f}",
                 "" if entry["HACKBENCH_MEAN_SECONDS"] is None else f"{entry['HACKBENCH_MEAN_SECONDS']:.3f}",
                 "" if entry["SYSBENCH_EVENTS_PER_SEC"] is None else f"{entry['SYSBENCH_EVENTS_PER_SEC']:.2f}",
                 "" if entry["STRESSNG_BOGO_OPS_PER_SEC"] is None else f"{entry['STRESSNG_BOGO_OPS_PER_SEC']:.2f}",
+                "" if entry["SCHBENCH_RPS"] is None else f"{entry['SCHBENCH_RPS']:.2f}",
                 entry["notes"],
                 entry["log_paths"],
             ]
@@ -285,7 +294,7 @@ def write_report(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
     is_hard_rt = any(entry.get("hard_rt") for entry in aggregated)
 
     if is_hard_rt:
-        header = "| Scheduler | Runs | Status | Total samples | Overflows >20us | Max latency (us) | Hackbench mean (s) | Sysbench events/s | Stress-ng bogo ops/s |"
+        header = "| Scheduler | Runs | Status | Total samples | Overflows >20us | Max latency (us) | Schbench wakeup P99 (us) | Schbench wakeup max (us) | Hackbench mean (s) | Sysbench events/s | Stress-ng bogo ops/s | Schbench RPS |"
         sep = "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |"
         note_parts = [
             "",
@@ -298,14 +307,16 @@ def write_report(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
             "- Higher is better for sysbench events/s and stress-ng bogo ops/s.",
         ]
     else:
-        header = "| Scheduler | Runs | Status | sched_ext state | Current scheduler | Max latency (us) | Spikes >100us | Hackbench mean (s) | Sysbench events/s | Stress-ng bogo ops/s |"
-        sep = "| --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |"
+        header = "| Scheduler | Runs | Status | sched_ext state | Current scheduler | Max latency (us) | Spikes >100us | Schbench wakeup P99 (us) | Schbench wakeup max (us) | Hackbench mean (s) | Sysbench events/s | Stress-ng bogo ops/s | Schbench RPS |"
+        sep = "| --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
         note_parts = [
             "",
             "## Notes",
             "",
-            "- Lower is better for latency and hackbench time.",
-            "- Higher is better for sysbench events/s and stress-ng bogo ops/s.",
+            "- Lower is better for latency, spikes, hackbench time, and schbench wakeup latency.",
+            "- Higher is better for sysbench events/s, stress-ng bogo ops/s, and schbench RPS.",
+            "- Schbench measures scheduler tail wakeup latency (Facebook/Meta standard metric).",
+            "  Lower P99 and max indicate better scheduler responsiveness under load.",
         ]
 
     lines = [
@@ -321,21 +332,24 @@ def write_report(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
     for entry in aggregated:
         if is_hard_rt:
             lines.append(
-                "| {scheduler} | {runs} | {status} | {total} | {overflows} | {latency} | {hackbench} | {sysbench} | {stressng} |".format(
+                "| {scheduler} | {runs} | {status} | {total} | {overflows} | {latency} | {sch_p99} | {sch_max} | {hackbench} | {sysbench} | {stressng} | {sch_rps} |".format(
                     scheduler=entry["display_scheduler"],
                     runs=entry["runs"],
                     status=entry["status"],
                     total="n/a" if entry["LATENCY_TOTAL_SAMPLES"] is None else f"{entry['LATENCY_TOTAL_SAMPLES']:.0f}",
                     overflows="n/a" if entry["LATENCY_OVER_20US"] is None else f"{entry['LATENCY_OVER_20US']:.0f}",
                     latency="n/a" if entry["LATENCY_MAX_US"] is None else f"{entry['LATENCY_MAX_US']:.2f}",
+                    sch_p99="n/a" if entry["SCHBENCH_WAKEUP_P99"] is None else f"{entry['SCHBENCH_WAKEUP_P99']:.2f}",
+                    sch_max="n/a" if entry["SCHBENCH_WAKEUP_MAX"] is None else f"{entry['SCHBENCH_WAKEUP_MAX']:.2f}",
                     hackbench="n/a" if entry["HACKBENCH_MEAN_SECONDS"] is None else f"{entry['HACKBENCH_MEAN_SECONDS']:.3f}",
                     sysbench="n/a" if entry["SYSBENCH_EVENTS_PER_SEC"] is None else f"{entry['SYSBENCH_EVENTS_PER_SEC']:.2f}",
                     stressng="n/a" if entry["STRESSNG_BOGO_OPS_PER_SEC"] is None else f"{entry['STRESSNG_BOGO_OPS_PER_SEC']:.2f}",
+                    sch_rps="n/a" if entry["SCHBENCH_RPS"] is None else f"{entry['SCHBENCH_RPS']:.2f}",
                 )
             )
         else:
             lines.append(
-                "| {scheduler} | {runs} | {status} | {sched_ext_state} | {current_scheduler} | {latency} | {spikes} | {hackbench} | {sysbench} | {stressng} |".format(
+                "| {scheduler} | {runs} | {status} | {sched_ext_state} | {current_scheduler} | {latency} | {spikes} | {sch_p99} | {sch_max} | {hackbench} | {sysbench} | {stressng} | {sch_rps} |".format(
                     scheduler=entry["display_scheduler"],
                     runs=entry["runs"],
                     status=entry["status"],
@@ -343,9 +357,12 @@ def write_report(out_dir: Path, aggregated: list[dict[str, object]]) -> Path:
                     current_scheduler=entry["current_scheduler"] or "none",
                     latency="n/a" if entry["LATENCY_MAX_US"] is None else f"{entry['LATENCY_MAX_US']:.2f}",
                     spikes="n/a" if entry["LATENCY_SPIKES_OVER_100US"] is None else f"{entry['LATENCY_SPIKES_OVER_100US']:.2f}",
+                    sch_p99="n/a" if entry["SCHBENCH_WAKEUP_P99"] is None else f"{entry['SCHBENCH_WAKEUP_P99']:.2f}",
+                    sch_max="n/a" if entry["SCHBENCH_WAKEUP_MAX"] is None else f"{entry['SCHBENCH_WAKEUP_MAX']:.2f}",
                     hackbench="n/a" if entry["HACKBENCH_MEAN_SECONDS"] is None else f"{entry['HACKBENCH_MEAN_SECONDS']:.3f}",
                     sysbench="n/a" if entry["SYSBENCH_EVENTS_PER_SEC"] is None else f"{entry['SYSBENCH_EVENTS_PER_SEC']:.2f}",
                     stressng="n/a" if entry["STRESSNG_BOGO_OPS_PER_SEC"] is None else f"{entry['STRESSNG_BOGO_OPS_PER_SEC']:.2f}",
+                    sch_rps="n/a" if entry["SCHBENCH_RPS"] is None else f"{entry['SCHBENCH_RPS']:.2f}",
                 )
             )
 
