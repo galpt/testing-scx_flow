@@ -123,19 +123,19 @@ Architecture:
 flowchart TD
     Start((Wakeup)) --> C{Budget >= 50us?}
 
-    C -- Yes --> Preempt[FLOW_DSQ_LOCAL_ON + PREEMPT\nImmediate dispatch + IPI]
-    C -- No --> Head[FLOW_DSQ_LOCAL_ON\nHead-of-queue, no IPI]
+    C -- Yes --> Preempt["FLOW_DSQ_LOCAL_ON + PREEMPT<br>Immediate dispatch + IPI"]
+    C -- No --> Head["FLOW_DSQ_LOCAL_ON<br>Head-of-queue, no IPI"]
 
     Preempt --> Run[Task Runs]
     Head --> Run
 
-    Run --> D{Slice expires\nbefore sleep?}
+    Run --> D{"Slice expires<br>before sleep?"}
 
-    D -- No --> Sleep([Sleep → refill budget])
-    D -- Yes --> E{Non-migratable\n(nr_cpus_allowed == 1)?}
+    D -- No --> Sleep["Sleep -> refill budget"]
+    D -- Yes --> E{"Non-migratable<br>(nr_cpus_allowed == 1)?"}
 
-    E -- Yes --> Pinned[FLOW_PINNED_DSQ_BASE | cpu\nPer-CPU FIFO, checked first]
-    E -- No --> Norm[FLOW_NORMAL_DSQ\nVtime-ordered, 50us slice]
+    E -- Yes --> Pinned["FLOW_PINNED_DSQ_BASE or cpu<br>Per-CPU FIFO, checked first"]
+    E -- No --> Norm["FLOW_NORMAL_DSQ<br>Vtime-ordered, 50us slice"]
 
     Pinned --> Dispatch[Dispatch]
     Norm --> Dispatch
