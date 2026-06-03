@@ -10,16 +10,16 @@
 
 ## Results
 
-| Scheduler | Max latency | Spikes >100μs | Hackbench mean (s) | Stress-ng bogo ops/s |
-|-----------|------------|---------------|-------------------|---------------------|
-| EEVDF (CachyOS tuned) | 1138μs | 295 | 0.674 | 6681 |
-| scx_cosmos | 5980μs | 807 | 0.920 | 6606 |
-| scx_bpfland | 3112μs | 959 | 1.020 | 6610 |
-| **scx_flow v3.0.2** | **333μs** | **44** | **0.838** | **6621** |
+| Scheduler | Max latency | Spikes >100μs | Schbench wakeup P99 | Schbench wakeup max | Hackbench mean (s) | Stress-ng bogo ops/s |
+|-----------|------------|---------------|---------------------|---------------------|-------------------|---------------------|
+| EEVDF (CachyOS tuned) | 1138μs | 295 | 4120μs | 22126μs | 0.674 | 6681 |
+| scx_cosmos | 5980μs | 807 | 2092μs | 16003μs | 0.920 | 6606 |
+| scx_bpfland | 3112μs | 959 | 4060μs | 26793μs | 1.020 | 6610 |
+| **scx_flow v3.0.2** | **333μs** | **44** | **1582μs** | **2994μs** | **0.838** | **6621** |
 
 ![Latency and throughput comparison across schedulers](mini_benchmarker_comparison.png)
 
-scx_flow v3.0.2 achieves **333μs max latency** with **44 spikes over 100μs** — best-in-test on both latency metrics by a wide margin (3.4× better max latency than baseline). Hackbench throughput at 0.838s is within 24% of the tuned EEVDF baseline, with zero heuristic classification.
+scx_flow v3.0.2 achieves **333μs max latency** with **44 spikes over 100μs** — best-in-test on both latency metrics by a wide margin (3.4× better max latency than baseline). Hackbench throughput at 0.838s is within 24% of the tuned EEVDF baseline. Schbench wakeup latency P99 at **1582μs** and max at **2994μs** are the lowest among all schedulers — 2.6× better P99 and 7.4× better max than baseline. Zero heuristic classification.
 
 > [!NOTE]
 > These results reflect one CPU microarchitecture and workload mix.
@@ -178,6 +178,7 @@ Total            3,373    1,102     −2,271 (−67%)
 | Platform | CachyOS Linux |
 | cyclictest | 30s, 4 threads, CPU 0 affinity, 1500/2000/2500/3000μs intervals |
 | hackbench | `-l 1000 -g 10` (process mode, UNIX sockets) |
+| schbench | `-m 2 -t 16 -r 30` (2 message threads × 16 workers, 30s) |
 | stress-ng | 4 CPU workers @ 80% load, 60s |
 
 ## Files
