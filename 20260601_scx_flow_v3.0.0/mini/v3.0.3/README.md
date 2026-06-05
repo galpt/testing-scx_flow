@@ -100,6 +100,3 @@ Raw per-scheduler logs and summaries are available alongside this directory:
 - `logs/` — cyclictest, hackbench, schbench, stress-ng output per scheduler
 - `summaries/` — parsed metric files per scheduler
 - `console/` — console output logs
-
-Raw logs for this run are also available in the
-[comparison-results archive](https://github.com/galpt/testing-scx_flow/tree/benchmark-archives/20260605_172916).
