@@ -47,9 +47,7 @@ scx_flow v3.0.3 achieves **351μs max latency** with **26 spikes over 100μs** �
 |--------|--------|---------|
 | **Step 1** | Cargo.toml version bump, branch scaffold | Foundation for v3.0.3 development |
 | **Step 2** | P-core/E-core awareness | `cpu_capacity` map populated from sysfs, `has_hybrid_cpus` detection, select_cpu capacity-biased placement for tasks with positive budget on hybrid topologies |
-| **Step 3** | Local DSQ re-check | `scx_bpf_dsq_nr_queued(SCX_DSQ_LOCAL)` re-checks the local DSQ within dispatch, catching wakeups that propagated during the kernel's dispatch call without starving the global DSQ |
-| **Step 3** | Cross-CPU preempt kick | `preempt_kick_target` + CAS-based dispatch IPI for same-CPU PREEMPT wakeups. Bypasses the softirq processing gap by having dispatch on ANY OTHER CPU send a real `RESCHEDULE_VECTOR` IPI that triggers immediate `__schedule()` |
-| **Step 3** | Audit findings cleanup | Remove dead constants/fields (shared-slice, autotune, kick flags, `prio_dispatches` from `flow_cpu_state`, 4 dead BSS volatiles). Fix `is_pinned_kthread` enqueue using `FLOW_DSQ_LOCAL` for cross-CPU wakeups. Rename `quick_disp=` to `wake_enq=`. Simplify `FLOW_CPUSTAT_INC` macro |
+| **Step 3** | Noise immunity + cleanup | Local DSQ re-check via `scx_bpf_dsq_nr_queued(SCX_DSQ_LOCAL)`, cross-CPU preempt kick (`preempt_kick_target` + CAS IPI), `is_pinned_kthread` enqueue fix, remove dead constants/fields (shared-slice, autotune, kick flags, `prio_dispatches`, 4 BSS volatiles), rename `quick_disp=` to `wake_enq=`, simplify `FLOW_CPUSTAT_INC` macro |
 
 ### Cross-CPU Preemption Kick
 
