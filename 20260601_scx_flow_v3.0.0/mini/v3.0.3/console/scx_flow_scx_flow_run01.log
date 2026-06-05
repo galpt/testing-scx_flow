@@ -1,0 +1,3 @@
+10:35:40 [INFO] scx_flow 3.0.3 x86_64-unknown-linux-gnu
+10:35:40 [INFO] Starting scx_flow scheduler
+10:35:40 [INFO] CPU topology: uniform cores (16 online, capacity 1024)
