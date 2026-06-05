@@ -46,7 +46,7 @@ scx_flow v3.0.3 achieves **351μs max latency** with **26 spikes over 100μs** �
 | Commit | Change | Purpose |
 |--------|--------|---------|
 | **Step 1** | Cargo.toml version bump, branch scaffold | Foundation for v3.0.3 development |
-| **Step 2** | P-core/E-core awareness | `cpu_capacity` map populated from sysfs, `has_hybrid_cpus` detection, select_cpu capacity-biased placement for tasks with positive budget on hybrid topologies |
+| **Step 2** | P-core/E-core awareness | `cpu_capacity` map populated from sysfs with multi-source fallback (tries `cpu_capacity` first, falls back to `cpufreq/cpuinfo_max_freq` when uniform — required on Raptor Lake where `cpu_capacity` reports 1024 for both P-cores and E-cores with SMT enabled). `has_hybrid_cpus` detection, values normalized to [0, 1024], select_cpu capacity-biased placement for tasks with positive budget on hybrid topologies |
 | **Step 3** | Noise immunity + cleanup | Local DSQ re-check via `scx_bpf_dsq_nr_queued(SCX_DSQ_LOCAL)`, cross-CPU preempt kick (`preempt_kick_target` + CAS IPI), fix `is_pinned_kthread` to use `FLOW_DSQ_LOCAL_ON` instead of `FLOW_DSQ_LOCAL` (was orphaned on wrong CPU for cross-CPU wakeups), remove dead constants/fields (shared-slice, autotune, kick flags, `prio_dispatches`, 4 BSS volatiles), rename `quick_disp=` to `wake_enq=`, simplify `FLOW_CPUSTAT_INC` macro |
 
 ### Cross-CPU Preemption Kick
