@@ -15,6 +15,8 @@
 | scx_bpfland | 3183μs | 304 | 3972μs | 25424μs | 0.997 | 6579 |
 | **scx_flow v3.0.3** | **351μs** | **26** | **1302μs** | **3048μs** | **0.719** | **6654** |
 
+![Latency and throughput comparison across schedulers](mini_benchmarker_comparison.png)
+
 scx_flow v3.0.3 achieves **351μs max latency** with **26 spikes over 100μs** — best-in-test on both latency metrics by a wide margin (3.2× better max latency than baseline). Hackbench throughput at 0.719s is within 6% of the tuned EEVDF baseline. Schbench wakeup latency P99 at **1302μs** and max at **3048μs** are the lowest among all schedulers — 3.2× better P99 and 8.8× better max than baseline.
 
 > [!NOTE]
