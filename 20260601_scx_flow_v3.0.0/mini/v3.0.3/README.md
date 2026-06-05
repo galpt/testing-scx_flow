@@ -4,7 +4,7 @@
 > v3.0.3 extends the budget-driven architecture with P-core/E-core
 > awareness (heterogeneous CPU topologies) and a cross-CPU preemption
 > kick mechanism that bypasses the softirq processing gap for same-CPU
-> wakeups.  Net change: **+120 lines** (+157 additions, −35 deletions) vs v3.0.2.
+> wakeups.  Net change: **+168 lines** (+208 additions, −38 deletions) vs v3.0.2.
 
 ## Results
 
@@ -33,7 +33,7 @@ scx_flow v3.0.3 achieves **351μs max latency** with **26 spikes over 100μs** �
 | v3.0.0 | 272μs | 16 | 0.799 | — | 1,008 |
 | v3.0.1 | 132μs | 9 | 0.797 | — | 1,010 |
 | v3.0.2 | 333μs | 44 | 0.838 | 1582 | 1,102 |
-| **v3.0.3** | **351μs** | **26** | **0.719** | **1302** | **1,222** |
+| **v3.0.3** | **351μs** | **26** | **0.719** | **1302** | **1,270** |
 
 | Benchmark run | Baseline | cosmos | bpfland | **flow** | flow ver |
 |---|---|---|---|---|---|
