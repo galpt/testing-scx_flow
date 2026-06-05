@@ -59,7 +59,16 @@ The monitor line shows `kick_ipi=2` for this run — 2 cross-CPU preempt IPIs se
 
 ### P-core/E-core Awareness
 
-On hybrid Intel CPUs (Alder Lake, Raptor Lake), P-cores report capacity ~1024 and E-cores report ~400-600 in sysfs `cpu_capacity`. `select_cpu` now checks `has_hybrid_cpus` and, for tasks with positive budget (latency-sensitive), biases placement toward higher-capacity CPUs. This is a no-op on uniform-core systems (the `has_hybrid_cpus` flag stays 0).
+On hybrid Intel CPUs (Alder Lake, Raptor Lake), the scheduler detects
+heterogeneous cores via a multi-source fallback.  It first tries
+`cpu_capacity` from sysfs; when all values are 1024 (seen on Raptor Lake
+with SMT enabled), it falls back to `cpufreq/cpuinfo_max_freq` where
+P-cores (~5.1 GHz) and E-cores (~3.9 GHz) are distinguishable.  The
+chosen values are normalized to a [0, 1024] range for the BPF map.
+
+`select_cpu` checks `has_hybrid_cpus` and, for tasks with positive budget
+(latency-sensitive), biases placement toward higher-capacity CPUs.  This
+is a no-op on uniform-core systems (the `has_hybrid_cpus` flag stays 0).
 
 ## Architecture (unchanged from v3.0.2)
 
