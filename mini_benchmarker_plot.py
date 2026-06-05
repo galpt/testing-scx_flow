@@ -114,13 +114,18 @@ def aggregate(rows: list[dict[str, str]]) -> list[dict[str, object]]:
         }
         if scheduler == "baseline" and entry["kernel_release"]:
             entry["display_scheduler"] = f"baseline ({entry['kernel_release']})"
-        for metric_key, _, _ in METRICS:
+        for metric_key, _, direction in METRICS:
             values = [
                 parsed
                 for item in items
                 if (parsed := as_float(item.get(metric_key))) is not None
             ]
-            entry[metric_key] = statistics.fmean(values) if values else None
+            if not values:
+                entry[metric_key] = None
+            elif direction == "lower":
+                entry[metric_key] = max(values)
+            else:
+                entry[metric_key] = statistics.fmean(values)
         values_total = [
             parsed
             for item in items
