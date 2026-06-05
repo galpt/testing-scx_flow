@@ -46,7 +46,7 @@ scx_flow v3.0.3 achieves **351μs max latency** with **26 spikes over 100μs** �
 | Commit | Change | Purpose |
 |--------|--------|---------|
 | **Step 1** | Cargo.toml version bump, branch scaffold | Foundation for v3.0.3 development |
-| **Step 2** | P-core/E-core awareness | `cpu_capacity` map populated from sysfs with multi-source fallback (tries `cpu_capacity` first, falls back to `cpufreq/cpuinfo_max_freq` when uniform — required on Raptor Lake where `cpu_capacity` reports 1024 for both P-cores and E-cores with SMT enabled). `has_hybrid_cpus` detection, values normalized to [0, 1024], select_cpu capacity-biased placement for tasks with positive budget on hybrid topologies |
+| **Step 2** | P-core/E-core + AMD dual-CCD awareness | `cpu_capacity` map populated from sysfs with multi-source fallback (tries AMD preferred-core ranking, CPPC highest_perf, `cpu_capacity`, `cpuinfo_max_freq` in order — required on Raptor Lake where `cpu_capacity` is uniform with SMT on, and on 7950X3D where both `cpu_capacity` and frequency are uniform). `has_hybrid_cpus` detection, values normalized to [0, 1024], select_cpu capacity-biased placement for tasks with positive budget |
 | **Step 3** | Noise immunity + cleanup | Local DSQ re-check via `scx_bpf_dsq_nr_queued(SCX_DSQ_LOCAL)`, cross-CPU preempt kick (`preempt_kick_target` + CAS IPI), fix `is_pinned_kthread` to use `FLOW_DSQ_LOCAL_ON` instead of `FLOW_DSQ_LOCAL` (was orphaned on wrong CPU for cross-CPU wakeups), remove dead constants/fields (shared-slice, autotune, kick flags, `prio_dispatches`, 4 BSS volatiles), rename `quick_disp=` to `wake_enq=`, simplify `FLOW_CPUSTAT_INC` macro |
 
 ### Cross-CPU Preemption Kick
@@ -59,12 +59,24 @@ The monitor line shows `kick_ipi=2` for this run — 2 cross-CPU preempt IPIs se
 
 ### P-core/E-core Awareness
 
-On hybrid Intel CPUs (Alder Lake, Raptor Lake), the scheduler detects
-heterogeneous cores via a multi-source fallback.  It first tries
-`cpu_capacity` from sysfs; when all values are 1024 (seen on Raptor Lake
-with SMT enabled), it falls back to `cpufreq/cpuinfo_max_freq` where
-P-cores (~5.1 GHz) and E-cores (~3.9 GHz) are distinguishable.  The
-chosen values are normalized to a [0, 1024] range for the BPF map.
+The scheduler detects asymmetric core topologies via a multi-source
+fallback matching `scx_utils::topology::get_capacity_source`, ordered
+from most to least precise:
+
+1. `cpufreq/amd_pstate_prefcore_ranking` — AMD dual-CCD (7950X3D)
+2. `cpufreq/amd_pstate_highest_perf` — AMD pstate highest perf
+3. `acpi_cppc/highest_perf` — ACPI CPPC highest perf
+4. `cpu_capacity` — ARM big.LITTLE, some Intel
+5. `cpufreq/cpuinfo_max_freq` — Intel hybrid (Raptor Lake)
+
+The first source that reports non-uniform values across CPUs is used;
+values are normalized to a [0, 1024] range for the BPF map.  On Intel
+Raptor Lake with SMT enabled, `cpu_capacity` reports 1024 for all cores,
+so it falls through to `cpuinfo_max_freq` where P-cores (~5.1 GHz) and
+E-cores (~3.9 GHz) differ.  On AMD 7950X3D, `cpu_capacity` and
+`cpuinfo_max_freq` are both uniform, so it falls through to
+`amd_pstate_highest_perf` or `amd_pstate_prefcore_ranking` where the
+3D V-Cache CCD and the high-frequency CCD report different values.
 
 `select_cpu` checks `has_hybrid_cpus` and, for tasks with positive budget
 (latency-sensitive), biases placement toward higher-capacity CPUs.  This
