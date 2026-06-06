@@ -4,7 +4,7 @@
 > v3.0.3 extends the budget-driven architecture with P-core/E-core
 > awareness (heterogeneous CPU topologies) and a cross-CPU preemption
 > kick mechanism that bypasses the softirq processing gap for same-CPU
-> wakeups.  Net change: **+176 lines** (+216 additions, −40 deletions) vs v3.0.2.
+> wakeups.  Net change: **+176 lines** (+217 additions, −41 deletions) vs v3.0.2.
 
 ## Results
 
