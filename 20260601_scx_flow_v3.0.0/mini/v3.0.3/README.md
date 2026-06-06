@@ -4,7 +4,7 @@
 > v3.0.3 extends the budget-driven architecture with P-core/E-core
 > awareness (heterogeneous CPU topologies) and a cross-CPU preemption
 > kick mechanism that bypasses the softirq processing gap for same-CPU
-> wakeups.  Net change: **+176 lines** (+217 additions, −41 deletions) vs v3.0.2.
+> wakeups.  Net change: **+117 lines** (+121 additions, −4 deletions) vs v3.0.2.
 
 ## Results
 
@@ -33,7 +33,7 @@ scx_flow v3.0.3 achieves **351μs max latency** with **26 spikes over 100μs** �
 | v3.0.0 | 272μs | 16 | 0.799 | — | 1,066 |
 | v3.0.1 | 132μs | 9 | 0.797 | — | 1,082 |
 | v3.0.2 | 333μs | 44 | 0.838 | 1582 | 1,102 |
-| **v3.0.3** | **351μs** | **26** | **0.719** | **1302** | **1,278** |
+| **v3.0.3** | **351μs** | **26** | **0.719** | **1302** | **1,219** |
 
 | Benchmark run | Baseline | cosmos | bpfland | **flow** | flow ver |
 |---|---|---|---|---|---|
@@ -45,16 +45,8 @@ scx_flow v3.0.3 achieves **351μs max latency** with **26 spikes over 100μs** �
 
 | Commit | Change | Purpose |
 |--------|--------|---------|
-| **Step 1** | Cargo.toml version bump, branch scaffold | Foundation for v3.0.3 development |
-| **Step 2** | P-core/E-core + AMD dual-CCD awareness | `cpu_capacity` map populated from sysfs with multi-source fallback (tries AMD preferred-core ranking, CPPC highest_perf, `cpu_capacity`, `cpuinfo_max_freq` in order — required on Raptor Lake where `cpu_capacity` is uniform with SMT on, and on 7950X3D where both `cpu_capacity` and frequency are uniform). `has_hybrid_cpus` detection, values normalized to [0, 1024], select_cpu capacity-biased placement for tasks with positive budget |
-| **Step 3** | Noise immunity + cleanup | Local DSQ re-check via `scx_bpf_dsq_nr_queued(SCX_DSQ_LOCAL)`, cross-CPU preempt kick (`preempt_kick_target` + CAS IPI), fix `is_pinned_kthread` to use `FLOW_DSQ_LOCAL_ON` instead of `FLOW_DSQ_LOCAL` (was orphaned on wrong CPU for cross-CPU wakeups), remove dead constants/fields (shared-slice, autotune, kick flags, `prio_dispatches`, 4 BSS volatiles), rename `quick_disp=` to `wake_enq=`, simplify `FLOW_CPUSTAT_INC` macro |
-
-### Cross-CPU Preemption Kick
-
-The key noise immunity feature: `scx_bpf_kick_cpu(self, PREEMPT)` is architecturally a noop — it calls `resched_curr()` which only sets `TIF_NEED_RESCHED`, waiting for the next preemption point (return from softirq/interrupt). The max latency outlier occurs when other softirqs (NET_RX, RCU, block) or perf NMIs delay the `need_resched` check.
-
-The fix: in enqueue, store the target CPU number in `preempt_kick_target`. In dispatch on ANY OTHER CPU, atomically claim the target via CAS and send `scx_bpf_kick_cpu(target, PREEMPT)` — a real IPI whose handler calls `__schedule()` immediately, preempting whatever the target CPU is doing including softirq processing. Bounds latency to approximately the dispatch interval (~50μs) of the next busy CPU.
-
+| **Step 1** | P-core/E-core + AMD dual-CCD awareness | `cpu_capacity` map populated from sysfs with multi-source fallback (tries AMD preferred-core ranking, CPPC highest_perf, `cpu_capacity`, `cpuinfo_max_freq` in order — required on Raptor Lake where `cpu_capacity` is uniform with SMT on, and on 7950X3D where both `cpu_capacity` and frequency are uniform). `has_hybrid_cpus` detection, values normalized to [0, 1024], select_cpu capacity-biased placement for tasks with positive budget |
+| **Step 2** | Review fixes and QA hardening | Fix `cpu_capacity_map` size from 256 to 4096 to handle large CPU counts. Fix vtime comment range claim (`2500us` → `2000us`). Fix PREEMPT comment to mention `first_run` exception. Fix misleading indentation in `flow_stopping`. All fixes from QA, fidelity, security, and performance review. See review reports for details. |
 The monitor line shows `kick_ipi=2` for this run — 2 cross-CPU preempt IPIs sent.
 
 ### P-core/E-core Awareness
