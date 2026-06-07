@@ -1,0 +1,5 @@
+scheduler,display_scheduler,runs,status,sched_ext_state,current_scheduler,kernel_release,latency_max_us,latency_spikes_over_100us,schbench_wakeup_p99_us,schbench_wakeup_max_us,hackbench_mean_seconds,sysbench_events_per_sec,stressng_bogo_ops_per_sec,schbench_rps,notes,log_paths
+baseline,baseline (7.0.11-1-cachyos),3,completed,disabled,none,7.0.11-1-cachyos,1132.00,288.00,4136.00,7219.00,0.673,,6660.34,1421.66,,logs/baseline_run1.log; logs/baseline_run2.log; logs/baseline_run3.log
+scx_cosmos,scx_cosmos,3,completed,enabled,cosmos_1.1.1_x86_64_unknown_linux_gnu,7.0.11-1-cachyos,5946.00,624.00,2324.00,12002.00,0.920,,6602.63,1233.41,,logs/scx_cosmos_run1.log; logs/scx_cosmos_run2.log; logs/scx_cosmos_run3.log
+scx_bpfland,scx_bpfland,3,completed,enabled,bpfland_1.1.1_x86_64_unknown_linux_gnu,7.0.11-1-cachyos,3017.00,461.00,4052.00,29512.00,1.028,,6621.96,1130.53,,logs/scx_bpfland_run1.log; logs/scx_bpfland_run2.log; logs/scx_bpfland_run3.log
+scx_flow,scx_flow,3,completed,enabled,scx_flow_3.1.0_x86_64_unknown_linux_gnu,7.0.11-1-cachyos,658.00,33.00,1846.00,6996.00,1.451,,6284.66,1132.52,,logs/scx_flow_run1.log; logs/scx_flow_run2.log; logs/scx_flow_run3.log

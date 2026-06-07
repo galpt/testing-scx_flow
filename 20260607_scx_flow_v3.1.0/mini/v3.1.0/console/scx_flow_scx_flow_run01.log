@@ -1,0 +1,5 @@
+08:35:34 [INFO] scx_flow 3.1.0 x86_64-unknown-linux-gnu
+08:35:34 [INFO] Starting scx_flow scheduler
+08:35:34 [INFO] CPU topology: hybrid cores detected via cpufreq/amd_pstate_prefcore_ranking (raw 166–196, 16 online)
+EXIT: unregistered from user space
+08:37:43 [INFO] Scheduler exited
