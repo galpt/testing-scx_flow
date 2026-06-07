@@ -50,7 +50,7 @@ scx_flow v3.1.0 achieves **658μs max latency** with **33 spikes over 100μs** �
 | Slice | Change | Purpose |
 |-------|--------|---------|
 | **Step 1** | HLS Level 1 RT infrastructure | `FLOW_RT_DSQ` (highest-priority DSQ), `rt_task_map` (PID→config hash), per-CPU `bpf_timer` array. Auto-detection of SCHED_FIFO/RR/DEADLINE tasks via `p->policy` at `flow_init_task()`. |
-| **Step 2** | CBS budget replenishment via `bpf_timer` | Perio dic timer callback replenishes CBS budget (100μs default for FIFO/RR, kernel-provided runtime for DEADLINE). No carry-over between periods. |
+| **Step 2** | CBS budget replenishment via `bpf_timer` | Periodic timer callback replenishes CBS budget (100μs default for FIFO/RR, kernel-provided runtime for DEADLINE). No carry-over between periods. |
 | **Step 3** | RT enqueue + dispatch | RT tasks with budget → `FLOW_RT_DSQ` (before pinned DSQ). Exhausted RT tasks → BE path. `rt_registered_count == 0` short-circuits Level 1. |
 | **Step 4** | Budget consumption tracking | Deduct runtime from `rt_current_budget_ns` in `flow_stopping()`. Overrun detection increments `rt_overruns` per-CPU counter. Early replenishment in `flow_runnable()` for long-blocked tasks. |
 | **Step 5** | BPF auto-admission control | 95% total RT utilization cap. Utilization computed as `budget_ns × 1000 / period_ns`. Excess tasks silently fall through to BE. |
