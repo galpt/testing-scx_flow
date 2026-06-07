@@ -6,7 +6,7 @@
 > SCHED_DEADLINE) and provides deterministic CPU-time guarantees.
 > No flags, no configuration — zero-knobs RT.  Priority inheritance
 > is detected at scheduling events via `p->prio` vs `p->normal_prio`.
-> Net change: **+461 lines** (−10 deletions) vs v3.0.3.
+> Net change: **~+615 lines** across BPF + Rust vs v3.0.3.
 
 ## Results (3-run average, all schedulers across identical workloads)
 
@@ -36,7 +36,7 @@ scx_flow v3.1.0 achieves **658μs max latency** with **33 spikes over 100μs** �
 | v3.0.1 | 132μs | 9 | 0.797 | — | 1,082 |
 | v3.0.2 | 333μs | 44 | 0.838 | 1582 | 1,102 |
 | v3.0.3 | 351μs | 26 | 0.719 | 1302 | 1,219 |
-| **v3.1.0** | **658μs** | **33** | **1.451** | **1846** | **1,680** |
+| **v3.1.0** | **658μs** | **33** | **1.451** | **1846** | **1,800** |
 
 | Benchmark run | Baseline | cosmos | bpfland | **flow** | Notes |
 |---|---|---|---|---|---|
@@ -59,6 +59,8 @@ scx_flow v3.1.0 achieves **658μs max latency** with **33 spikes over 100μs** �
 | **Step 8** | Build fixes | Timer map changed from `PERCPU_ARRAY` to plain `ARRAY` indexed by CPU. BPF timer helpers are built-in (not kfuncs). CO-RE access for SCHED_DEADLINE fields. |
 | **Step 9** | Dynamic RT detection | Policy changes via `chrt` detected at next `flow_enqueue()`. Dynamic registration/deregistration with full admission control. No restart required. |
 | **Step 10** | README rewrite | Concise overview covering both RT and BE paths. Line counts updated. |
+| **Step 11** | Hot path gate | Gate PI detection behind `rt_registered_count > 0` (no RT tasks → no possible PI boost). Gate dynamic RT detection behind `rt_registered_count > 0 \|\| now_rt`. Remove BPF/Rust line counts from README. |
+| **Step 12** | DSQ emptiness guard | Guard `move_to_local` with `scx_bpf_dsq_nr_queued()` — 20× cheaper than lock acquisition. Restore FIFO/RR admission control body lost in rebase conflict. |
 
 ### CBS Server Architecture (HLS Level 1)
 
@@ -69,9 +71,9 @@ flow_enqueue():
   3. Otherwise                  → existing BE path (pinned/vtime)
 
 flow_dispatch():
-  1. rt_registered_count > 0?   → check FLOW_RT_DSQ
-  2. FLOW_PINNED_DSQ_BASE|cpu   (non-migratable tasks)
-  3. FLOW_NORMAL_DSQ            (vtime-ordered BE tasks)
+  1. rt_registered_count > 0?   → check FLOW_RT_DSQ (empty DSQ guard: nr_queued)
+  2. FLOW_PINNED_DSQ_BASE|cpu   (non-migratable tasks, empty DSQ guard: nr_queued)
+  3. FLOW_NORMAL_DSQ            (vtime-ordered BE tasks, empty DSQ guard: nr_queued)
   4. Re-run prev if queued
 ```
 
