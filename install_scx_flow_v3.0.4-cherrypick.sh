@@ -21,9 +21,11 @@ cd "$BUILD_DIR"
 cargo build --release -p scx_flow
 info "Build complete."
 
-step "Stopping conflicting services"
+step "Stopping conflicting services and processes"
 systemctl stop scx 2>/dev/null || true
 systemctl disable scx 2>/dev/null || true
+pkill -x scx_flow 2>/dev/null || true
+pkill -x scx_loader 2>/dev/null || true
 
 step "Installing binary"
 cp target/release/scx_flow "$INSTALL_PATH"
