@@ -38,6 +38,16 @@ cat > /etc/systemd/system/scx.service.d/direct-exec.conf << 'EOF'
 ExecStart=
 ExecStart=/usr/bin/scx_flow
 EOF
+
+step "Enabling web UI for scx_loader-managed schedulers"
+mkdir -p /etc/systemd/system/scx_loader.service.d
+cat > /etc/systemd/system/scx_loader.service.d/flow-webui.conf << 'EOF'
+# scx_flow Web UI needs TCP socket access on port 50005.
+# Remove the network restrictions inherited by scheduler child processes.
+[Service]
+RestrictAddressFamilies=
+SocketBindDeny=
+EOF
 systemctl daemon-reload
 
 step "Starting scx_loader for GUI management"
