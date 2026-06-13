@@ -38,6 +38,10 @@ ExecStart=/usr/bin/scx_flow
 EOF
 systemctl daemon-reload
 
+step "Restarting scx.service"
+systemctl enable --now scx 2>/dev/null || true
+info "scx.service enabled and started."
+
 step "Starting scx_loader for GUI management"
 if command -v scx_loader >/dev/null 2>&1 && systemctl list-unit-files scx_loader --no-legend >/dev/null 2>&1; then
     systemctl enable --now scx_loader 2>/dev/null || true
