@@ -4,8 +4,10 @@
 # Copyright (c) 2026 Galih Tama <galpt@v.recipes>
 #
 # Install scx_flow v3.0.4-cherryfix from the galpt/scx fork for local testing.
-# This branch contains the generational dispatch counter fix for the
+# This branch contains the rotating tier dispatch fix (Model A) for the
 # runnable task stall (DEFICIT tier starvation) found during benchmarking.
+# Every 4 dispatches rotate the starting tier so no tier waits longer
+# than 3 dispatch calls before being serviced first.
 #
 # Usage:
 #   sudo ./install_scx_flow_v3.0.4-cherryfix.sh
@@ -79,7 +81,7 @@ printf "  %-20s %s\n" "sched_ext:" "$(cat /sys/kernel/sched_ext/state 2>/dev/nul
 rm -rf "$BUILD_DIR"
 echo ""
 echo "=== scx_flow v3.0.4-cherryfix installed ==="
-echo "Generational dispatch counter: every 16th dispatch forces DEFICIT tier servicing."
+echo "Rotating tier dispatch (Model A): dispatch phase rotates every call — no tier waits longer than 3 dispatches."
 echo ""
 echo "To test the fix:"
 echo "  sudo ./reset_sched_ext_state.sh"
