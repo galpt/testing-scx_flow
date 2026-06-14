@@ -64,17 +64,16 @@ else
 fi
 
 time_cmd() {
-    local outfile="$1" label="$2"
-    shift 2
+    local outfile="$1"
+    shift
     if [ -n "$TIME_CMD" ]; then
-        "$TIME_CMD" -f "%e" -o "$outfile" "$@" &>/dev/null &
+        "$TIME_CMD" -f "%e" -o "$outfile" "$@" &>/dev/null
     else
-        # Fallback: use date +%s%N
-        (
-            start=$(date +%s%N)
-            "$@" &>/dev/null
-            echo $(( $(date +%s%N) - start )) | awk '{printf "%.3f\n", $1 / 1000000000}' > "$outfile"
-        ) &
+        local start end
+        start=$(date +%s%N)
+        "$@" &>/dev/null
+        end=$(date +%s%N)
+        awk "BEGIN { printf \"%.3f\n\", ($end - $start) / 1000000000 }" > "$outfile"
     fi
 }
 
@@ -393,9 +392,12 @@ run_workload() {
             pid=$!
             ;;
         primes)
-            time_cmd "$RF" "" primesieve 666000000000 --no-status | \
-                awk -F ': ' '/Seconds/{print $2}' 1>"$RF" &
-            pid=$!
+            if ! command -v primesieve &>/dev/null; then
+                echo "SKIP" > "$RF"
+            else
+                time_cmd "$RF" "" primesieve 666000000000 --no-status &
+                pid=$!
+            fi
             ;;
         argon2-hashing)
             time_cmd "$RF" "" argon2 BenchieSalt -id -t 20 -m 21 \

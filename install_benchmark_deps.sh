@@ -30,6 +30,7 @@ REQUIRED_PACKAGES=(
     x265
     xz
     time
+    primesieve
 )
 
 # On Arch/CachyOS, hackbench and lmbench are not available as standalone
