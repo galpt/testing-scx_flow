@@ -184,6 +184,14 @@ cleanup() {
     fix_results_ownership
 }
 
+cleanup_sigint() {
+    say "Interrupted — shutting down workloads..."
+    # Kill all child processes of this script
+    pkill -P $$ 2>/dev/null || true
+    cleanup
+    exit 130
+}
+trap cleanup_sigint SIGINT SIGTERM
 trap cleanup EXIT
 
 wait_for_scheduler_state() {
