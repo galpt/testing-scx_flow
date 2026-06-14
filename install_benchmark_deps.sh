@@ -26,6 +26,9 @@ REQUIRED_PACKAGES=(
     sysbench
     schbench
     python-matplotlib
+    argon2
+    x265
+    xz
 )
 
 # On Arch/CachyOS, hackbench and lmbench are not available as standalone
