@@ -487,6 +487,14 @@ render_csv_report() {
         done < "$csv"
     } > "$report"
 
+    # Render charts
+    local plotter="$SCRIPT_DIR/comprehensive_benchmarker_plot.py"
+    if [ -f "$plotter" ]; then
+        python3 "$plotter" --csv "$csv" --output-dir "$tagged_dir"
+        say "PNG:    $tagged_dir/comprehensive_benchmarker_comparison.png"
+        say "SVG:    $tagged_dir/comprehensive_benchmarker_comparison.svg"
+    fi
+
     say "CSV:    $csv"
     say "Report: $report"
 }
