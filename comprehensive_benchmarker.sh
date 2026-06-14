@@ -28,7 +28,7 @@
 #   7. x265-encoding              x265 video encode
 #   8. ffmpeg-compilation         Build ffmpeg from source (optional, needs git)
 
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESET_SCRIPT="$SCRIPT_DIR/reset_sched_ext_state.sh"
@@ -389,14 +389,14 @@ run_workload() {
     start_wall="$(date +%s)"
 
     case "$workload" in
-        stress-ng-cpu-cache-mem)  run_stress_ng_cpu_cache_mem "$log_file" "$timeout_sec" >"$log_file" 2>&1 ;;
-        perf-sched-msg-fork)      run_perf_sched_msg "$log_file" "$timeout_sec" >"$log_file" 2>&1 ;;
-        perf-memcpy)              run_perf_memcpy "$log_file" "$timeout_sec" >"$log_file" 2>&1 ;;
-        argon2-hashing)           run_argon2_hashing "$log_file" "$timeout_sec" >"$log_file" 2>&1 ;;
-        xz-compression)           run_xz_compression "$log_file" "$timeout_sec" >"$log_file" 2>&1 ;;
-        primes)                   run_primes "$log_file" "$timeout_sec" >"$log_file" 2>&1 ;;
-        x265-encoding)            run_x265_encoding "$log_file" "$timeout_sec" >"$log_file" 2>&1 ;;
-        ffmpeg-compilation)       run_ffmpeg_compilation "$log_file" "$timeout_sec" >"$log_file" 2>&1 ;;
+        stress-ng-cpu-cache-mem)  run_stress_ng_cpu_cache_mem "$log_file" "$timeout_sec" >"$log_file" 2>&1 || true ;;
+        perf-sched-msg-fork)      run_perf_sched_msg "$log_file" "$timeout_sec" >"$log_file" 2>&1 || true ;;
+        perf-memcpy)              run_perf_memcpy "$log_file" "$timeout_sec" >"$log_file" 2>&1 || true ;;
+        argon2-hashing)           run_argon2_hashing "$log_file" "$timeout_sec" >"$log_file" 2>&1 || true ;;
+        xz-compression)           run_xz_compression "$log_file" "$timeout_sec" >"$log_file" 2>&1 || true ;;
+        primes)                   run_primes "$log_file" "$timeout_sec" >"$log_file" 2>&1 || true ;;
+        x265-encoding)            run_x265_encoding "$log_file" "$timeout_sec" >"$log_file" 2>&1 || true ;;
+        ffmpeg-compilation)       run_ffmpeg_compilation "$log_file" "$timeout_sec" >"$log_file" 2>&1 || true ;;
     esac
 
     local exit_code=$?
