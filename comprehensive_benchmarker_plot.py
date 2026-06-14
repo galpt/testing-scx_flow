@@ -18,22 +18,24 @@ WORKLOADS = [
     "stress-ng-cpu-cache-mem",
     "perf-sched-msg-fork",
     "perf-memcpy",
+    "primes",
     "argon2-hashing",
     "xz-compression",
-    "primes",
     "x265-encoding",
     "ffmpeg-compilation",
+    "y-cruncher",
 ]
 
 WORKLOAD_LABELS = {
-    "stress-ng-cpu-cache-mem": "stress-ng CPU/Cache/Mem",
-    "perf-sched-msg-fork": "perf sched messaging",
+    "stress-ng-cpu-cache-mem": "stress-ng cpu-cache-mem",
+    "perf-sched-msg-fork": "perf sched msg fork thread",
     "perf-memcpy": "perf memcpy",
-    "argon2-hashing": "Argon2 hashing",
+    "primes": "calculating prime numbers",
+    "argon2-hashing": "argon2 hashing",
     "xz-compression": "xz compression",
-    "primes": "Primes",
     "x265-encoding": "x265 encoding",
     "ffmpeg-compilation": "ffmpeg compilation",
+    "y-cruncher": "y-cruncher pi 1b",
 }
 
 COLOR_BY_SCHEDULER = {

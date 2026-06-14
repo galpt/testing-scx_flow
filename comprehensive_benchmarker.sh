@@ -3,198 +3,227 @@
 #
 # Copyright (c) 2026 Galih Tama <galpt@v.recipes>
 #
-# Single-scheduler comprehensive benchmark — runs the current active
-# scheduler through 12 workloads using the same tool invocations as the
-# CachyOS mini-benchmarker.  Outputs a log file with per-workload times.
+# Multi-scheduler comprehensive benchmark — compares schedulers using the
+# same tool invocations as the CachyOS mini-benchmarker (stress-ng jobfile,
+# primesieve, perf sched -t, etc.) and generates CSV/PNG/SVG results like
+# the mini_benchmarker.
 #
 # Usage: sudo ./comprehensive_benchmarker.sh [options]
 #
 # Options:
-#   --workdir DIR        Working directory for assets and logs (default: ./.cache/cachyos-bench)
-#   --ffmpeg-ver VER     FFmpeg version to download (default: 7.0.1)
-#   --kernel-ver VER     Kernel source version (default: 6.14.7)
-#   --no-download        Skip downloading assets (use existing cached ones)
-#   --cleanup            Remove downloaded archives and extracted dirs after run
-#   -h, --help           Show this help
+#   --runs N                  Number of runs per scheduler (default: 1)
+#   --keep-results N          Keep N newest result dirs (default: 3)
+#   --results-dir DIR         Write results to DIR instead of timestamped path
+#   --schedulers "LIST"       Space-separated scheduler list
+#                             Default: "baseline scx_cosmos scx_bpfland scx_flow"
+#   --skip-workload LIST      Comma-separated workloads to skip
+#   --workdir DIR             Asset cache directory (default: ./.cache/cachyos-bench)
+#   --no-download             Skip downloading assets
+#   --clean-cache             Remove cached assets and exit
+#   -h, --help                Show this help
 
 set -uo pipefail
 
-export LANG=C
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RESET_SCRIPT="$SCRIPT_DIR/reset_sched_ext_state.sh"
+RESULTS_ROOT="$SCRIPT_DIR/comprehensive-bench-results"
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+RESULTS_DIR="$RESULTS_ROOT/$TIMESTAMP"
+KEEP_RESULTS=3
+RUNS=1
+SCHEDULERS=(baseline scx_cosmos scx_bpfland scx_flow)
+SKIP_WORKLOADS=""
 WORKDIR="${WORKDIR:-$SCRIPT_DIR/.cache/cachyos-bench}"
-FFMPEGVER="${FFMPEGVER:-7.0.1}"
-KERNVER="${KERNVER:-6.14.7}"
-CDATE="$(date +%F-%H%M)"
-RAMSIZE="$(awk '/MemTotal/{print int($2 / 1000)}' /proc/meminfo)"
-CPUCORES="$(nproc)"
 NO_DOWNLOAD=false
-CLEANUP=false
+SUDO_KEEPALIVE_PID=""
+INITIAL_SERVICE_ACTIVE=0
+RESTORE_DONE=0
+CURRENT_RUNTIME_LOG=""
+LOGFILE=""
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
-TB="$(tput bold)" TN="$(tput sgr0)"
-say() { printf "${BOLD}${CYAN}[bench]${NC} %s\n" "$1"; }
-ok()  { printf "${BOLD}${GREEN}[ ok ]${NC} %s\n" "$1"; }
-warn(){ printf "${BOLD}${YELLOW}[warn]${NC} %s\n" "$1"; }
-err() { printf "${BOLD}${RED}[err ]${NC} %s\n" "$1" >&2; }
+TB=$(tput bold); TN=$(tput sgr0)
+say()  { printf "${BOLD}${CYAN}[comprehensive]${NC} %s\n" "$1"; }
+ok()   { printf "${BOLD}${GREEN}[ ok ]${NC} %s\n" "$1"; }
+warn() { printf "${BOLD}${YELLOW}[warn]${NC} %s\n" "$1"; }
+err()  { printf "${BOLD}${RED}[err ]${NC} %s\n" "$1" >&2; }
 
-TNAMES=(
-    'stress-ng cpu-cache-mem'
-    'ffmpeg compilation'
-    'x265 encoding'
-    'argon2 hashing'
-    'perf sched msg fork thread'
-    'perf memcpy'
-    'calculating prime numbers'
-    'xz compression'
-    'y-cruncher pi 1b'
+CPUCORES=$(nproc)
+
+declare -A WLABEL
+WLABEL=(
+    [stress-ng-cpu-cache-mem]="stress-ng cpu-cache-mem"
+    [perf-sched-msg-fork]="perf sched msg fork thread"
+    [perf-memcpy]="perf memcpy"
+    [primes]="calculating prime numbers"
+    [argon2-hashing]="argon2 hashing"
+    [xz-compression]="xz compression"
+    [x265-encoding]="x265 encoding"
+    [ffmpeg-compilation]="ffmpeg compilation"
+    [y-cruncher]="y-cruncher pi 1b"
 )
 
-# --- Scheduler integrity ---
-SCX="none"
-SCX_VERSION=""
-if [ -f "/sys/kernel/sched_ext/root/ops" ]; then
-    TMP=$(cat "/sys/kernel/sched_ext/root/ops")
-    if [ -n "$TMP" ]; then
-        SCX=$(awk -F'[[:digit:]]' '{print $1}' /sys/kernel/sched_ext/root/ops | sed -rn 's/^(.*)_$/\1/p')
-        SCX_VERSION=$(sed -rn 's/^[^0-9]*([0-9]+(\.[0-9]+)+).*$/\1/p' /sys/kernel/sched_ext/root/ops)
-        [ -z "$SCX" ] && SCX="$TMP"
-    fi
-fi
+ALL_WORKLOADS=("${!WLABEL[@]}")
 
-check_scheduler_integrity() {
-    if [ "$SCX" = "none" ]; then return 0; fi
-    if [ -f "/sys/kernel/sched_ext/root/ops" ]; then
-        local CURRENT_OPS
-        CURRENT_OPS=$(cat "/sys/kernel/sched_ext/root/ops" 2>/dev/null || true)
-        if [ -z "$CURRENT_OPS" ]; then return 1; fi
-        local CURRENT_SCX
-        CURRENT_SCX=$(echo "$CURRENT_OPS" | awk -F'[[:digit:]]' '{print $1}' | sed -rn 's/^(.*)_$/\1/p')
-        [ -z "$CURRENT_SCX" ] && CURRENT_SCX="$CURRENT_OPS"
-        if [ "$CURRENT_SCX" != "$SCX" ]; then return 1; fi
+# --- Common utilities (from mini_benchmarker) ---
+run_privileged() {
+    if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi
+}
+
+ensure_sudo_ready() {
+    if [ "$(id -u)" -eq 0 ]; then return; fi
+    command -v sudo >/dev/null 2>&1 || { err "sudo is required."; exit 1; }
+    say "Refreshing sudo credentials"
+    sudo -v
+}
+
+start_sudo_keepalive() {
+    if [ "$(id -u)" -eq 0 ]; then return; fi
+    ( while true; do sudo -n true >/dev/null 2>&1 || exit 0; sleep 60; done ) &
+    SUDO_KEEPALIVE_PID=$!
+}
+
+stop_sudo_keepalive() {
+    if [ -n "$SUDO_KEEPALIVE_PID" ] && kill -0 "$SUDO_KEEPALIVE_PID" >/dev/null 2>&1; then
+        kill "$SUDO_KEEPALIVE_PID" >/dev/null 2>&1 || true; wait "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
+    fi
+    SUDO_KEEPALIVE_PID=""
+}
+
+current_sched_ext_state() { cat /sys/kernel/sched_ext/state 2>/dev/null || echo "unknown"; }
+current_sched_ext_ops() { cat /sys/kernel/sched_ext/root/ops 2>/dev/null || true; }
+
+scheduler_short_name() {
+    case "$1" in scx_*) printf '%s\n' "${1#scx_}" ;; *) printf '%s\n' "$1" ;; esac
+}
+
+scheduler_matches_name() {
+    local current="$1" expected="$2" short_name
+    short_name="$(scheduler_short_name "$expected")"
+    case "$current" in
+        "$expected"|"$expected"_*|"$short_name"|"$short_name"_*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+scheduler_is_attached() {
+    local name="$1"
+    scheduler_matches_name "$(current_sched_ext_ops)" "$name" && [ "$(current_sched_ext_state)" = "enabled" ]
+}
+
+service_exists() {
+    command -v systemctl >/dev/null 2>&1 && systemctl cat scx.service >/dev/null 2>&1
+}
+
+capture_initial_state() {
+    if service_exists && systemctl is-active --quiet scx.service; then
+        INITIAL_SERVICE_ACTIVE=1
+    fi
+}
+
+wait_for_scheduler_state() {
+    local expected="$1" want="${2:-active}" attempt=0
+    while [ "$attempt" -lt 60 ]; do
+        if [ "$want" = "active" ] && scheduler_is_attached "$expected"; then return 0; fi
+        if [ "$want" = "inactive" ] && ! scheduler_is_attached "$expected" && ! pgrep -x "$expected" >/dev/null 2>&1; then return 0; fi
+        attempt=$((attempt + 1)); sleep 0.5
+    done
+    return 1
+}
+
+wait_for_sched_ext_disabled() {
+    local attempt=0
+    while [ "$attempt" -lt 60 ]; do
+        if [ "$(current_sched_ext_state)" = "disabled" ] && [ -z "$(current_sched_ext_ops)" ]; then return 0; fi
+        attempt=$((attempt + 1)); sleep 0.5
+    done; return 1
+}
+
+stop_all_schedulers() {
+    run_privileged systemctl unset-environment SCX_SCHEDULER_OVERRIDE >/dev/null 2>&1 || true
+    run_privileged systemctl unset-environment SCX_FLAGS_OVERRIDE >/dev/null 2>&1 || true
+    if [ -x "$RESET_SCRIPT" ]; then
+        run_privileged "$RESET_SCRIPT"
+        wait_for_sched_ext_disabled || true
+        return
+    fi
+    if service_exists && systemctl is-active --quiet scx.service; then
+        run_privileged systemctl stop scx.service || true
+    fi
+    for proc in scx_flow scx_cosmos scx_bpfland scx_cake scx_pandemonium pandemonium; do
+        pkill -x "$proc" >/dev/null 2>&1 || true
+    done
+    wait_for_sched_ext_disabled || true
+}
+
+manual_scheduler_short_name() {
+    case "$1" in
+        scx_flow) printf 'flow\n' ;; scx_cosmos) printf 'cosmos\n' ;;
+        scx_bpfland) printf 'bpfland\n' ;; scx_cake) printf 'cake\n' ;;
+        scx_pandemonium|pandemonium) printf 'pandemonium\n' ;;
+        *) return 1 ;;
+    esac
+}
+
+scheduler_binary_path() { command -v "$1" 2>/dev/null || true; }
+
+start_scheduler_manual() {
+    local scheduler="$1" run_name="$2" short_name="" binary_path="" runtime_log=""
+    short_name="$(manual_scheduler_short_name "$scheduler")"
+    binary_path="$(scheduler_binary_path "$scheduler")"
+    [ -n "$binary_path" ] || { err "Could not resolve binary path for $scheduler"; return 1; }
+    runtime_log="$RESULTS_DIR/console/${scheduler}_${run_name}.log"
+    CURRENT_RUNTIME_LOG="$runtime_log"
+    mkdir -p "$RESULTS_DIR/console"
+    say "Starting $scheduler directly"
+    run_privileged env RUST_LOG=info "$binary_path" >"$runtime_log" 2>&1 &
+    if wait_for_scheduler_state "$short_name" active; then
+        ok "Scheduler state is ready for $scheduler"
     else
+        err "Timed out waiting for scheduler state: $scheduler"
         return 1
     fi
-    return 0
 }
 
-# --- Animation + scheduler monitor ---
-PID=""
-animate() {
-    local idx=$1 s='-+' i=0
-    while kill -0 "$PID" &>/dev/null; do
-        if ! check_scheduler_integrity; then
-            printf "\n${RED}${TB}**** CRITICAL: Scheduler crashed during ${TNAMES[$idx]}! ****${TN}\n"
-            kill -9 "$PID" 2>/dev/null || true
-            echo "${TNAMES[$idx]}: FAILED (Scheduler crashed)" >> "$LOGFILE"
-            echo "SCX Scheduler: ${SCX} (CRASHED during ${TNAMES[$idx]})" >> "$LOGFILE"
-            exit 9
+restore_default_service_state() {
+    if [ "$RESTORE_DONE" -eq 1 ]; then return; fi
+    RESTORE_DONE=1
+    if service_exists; then
+        run_privileged systemctl unset-environment SCX_SCHEDULER_OVERRIDE >/dev/null 2>&1 || true
+        run_privileged systemctl unset-environment SCX_FLAGS_OVERRIDE >/dev/null 2>&1 || true
+        if [ "$INITIAL_SERVICE_ACTIVE" -eq 1 ]; then
+            run_privileged systemctl restart scx.service >/dev/null 2>&1 || true
+        else
+            run_privileged systemctl stop scx.service >/dev/null 2>&1 || true
         fi
-        i=$(( (i+1) % 2 ))
-        printf "\b${s:$i:1}"
-        sleep 1
-    done
-    printf "\b " ; cat "$RESFILE"
-    echo "${TNAMES[$idx]}: $(cat "$RESFILE")" >> "$LOGFILE"
-}
-
-# --- Workload runners ---
-runstress() {
-    RESFILE="$WORKDIR/runstress"
-    /usr/bin/time -f %e -o "$RESFILE" stress-ng -q --job "$WORKDIR/stressC" &>/dev/null &
-    PID=$!
-    echo -n -e "* ${TNAMES[0]}:\t\t"
-    animate 0
-}
-
-runext() {
-    RESFILE="$WORKDIR/runffm"
-    cd "$WORKDIR/ffmpeg-$FFMPEGVER" 2>/dev/null || { echo "SKIP" > "$RESFILE"; return; }
-    /usr/bin/time -f %e -o "$RESFILE" make -s -j"${CPUCORES}" &>/dev/null &
-    PID=$!
-    echo -n -e "* ${TNAMES[1]}:\t\t\t"
-    animate 1
-}
-
-runx265() {
-    RESFILE="$WORKDIR/runx265"
-    if [ ! -f "$WORKDIR/bosphorus_hd.y4m" ]; then
-        echo "SKIP" > "$RESFILE"; return
     fi
-    /usr/bin/time -f %e -o "$RESFILE" x265 -p slow -b 6 -o /dev/null \
-        --no-progress --log-level none --input "$WORKDIR/bosphorus_hd.y4m" &
-    PID=$!
-    echo -n -e "* ${TNAMES[2]}:\t\t\t"
-    animate 2
 }
 
-runargon() {
-    RESFILE="$WORKDIR/runargon"
-    /usr/bin/time -f %e -o "$RESFILE" argon2 BenchieSalt -id -t 20 -m 21 \
-        -p "$CPUCORES" &>/dev/null <<< "$(head -c 64 /dev/urandom)" &
-    PID=$!
-    echo -n -e "* ${TNAMES[3]}:\t\t\t"
-    animate 3
-}
-
-runperf_sch() {
-    RESFILE="$WORKDIR/runperfs"
-    perf bench -f simple sched messaging -t -g 24 -l 6000 1>"$RESFILE" &
-    PID=$!
-    echo -n -e "* ${TNAMES[4]}:\t\t"
-    animate 4
-}
-
-runperf_mem() {
-    RESFILE="$WORKDIR/runperfm"
-    /usr/bin/time -f %e -o "$RESFILE" perf bench -f simple mem memcpy \
-        --nr_loops 100 --size 2GB -f default &>/dev/null &
-    PID=$!
-    echo -n -e "* ${TNAMES[5]}:\t\t\t\t"
-    animate 5
-}
-
-runprime() {
-    RESFILE="$WORKDIR/runprime"
-    /usr/bin/time -f%e -o "$RESFILE" primesieve 666000000000 --no-status | \
-        awk -F ': ' '/Seconds/{print $2}' 1>"$RESFILE" &
-    PID=$!
-    echo -n -e "* ${TNAMES[6]}:\t\t"
-    animate 6
-}
-
-runxz() {
-    RESFILE="$WORKDIR/runxz"
-    if [ ! -f "$WORKDIR/firefox102.tar" ]; then
-        echo "SKIP" > "$RESFILE"; return
+fix_results_ownership() {
+    if [ -n "${SUDO_USER:-}" ] && [ -d "$RESULTS_DIR" ]; then
+        run_privileged chown -R "${SUDO_USER}:$(id -gn "$SUDO_USER")" "$RESULTS_DIR" >/dev/null 2>&1 || true
     fi
-    /usr/bin/time -f %e -o "$RESFILE" xz -z -k -T"${CPUCORES}" -Qqq \
-        -f "$WORKDIR/firefox102.tar" &
-    PID=$!
-    echo -n -e "* ${TNAMES[7]}:\t\t\t"
-    animate 7
 }
 
-runyc() {
-    RESFILE="$WORKDIR/runyc"
-    local YCDIR
-    YCDIR=$(ls -d "$WORKDIR"/y-cruncher*v*/ 2>/dev/null | head -1)
-    if [ -z "$YCDIR" ]; then
-        echo "SKIP" > "$RESFILE"; return
-    fi
-    cd "$YCDIR" || return
-    rm -f "Pi"*.txt
-    /usr/bin/time -f%e -o "$RESFILE" ./y-cruncher bench 1b -od:0 \
-        -o "$WORKDIR" &>/dev/null &
-    PID=$!
-    echo -n -e "* ${TNAMES[8]}:\t\t\t"
-    animate 8
+cleanup() {
+    restore_default_service_state
+    stop_sudo_keepalive
+    fix_results_ownership
 }
+trap cleanup EXIT
+cleanup_sigint() {
+    say "Interrupted — shutting down workloads..."
+    pkill -P $$ 2>/dev/null || true
+    cleanup
+    exit 130
+}
+trap cleanup_sigint SIGINT SIGTERM
 
-# --- Asset preparation ---
+# --- Asset preparation (CachyOS-style) ---
 prepare_assets() {
-    echo -e "\n${TB}Checking, downloading and preparing test files...${TN}"
+    mkdir -p "$WORKDIR"
+    echo -e "${TB}Checking and preparing test assets...${TN}"
 
     # stress-ng jobfile
     cat > "$WORKDIR/stressC" <<-EOF
@@ -222,9 +251,7 @@ cpu-ops $((4800 / CPUCORES))
 bsearch CPUCORES
 bsearch-ops $((2400 / CPUCORES))
 stream CPUCORES
-EOF
-    echo "stream-ops $((4800 / CPUCORES))" >> "$WORKDIR/stressC"
-    cat >> "$WORKDIR/stressC" <<-EOF
+stream-ops $((4800 / CPUCORES))
 list CPUCORES
 list-ops $((2400 / CPUCORES))
 qsort CPUCORES
@@ -239,18 +266,18 @@ EOF
 
     ! $NO_DOWNLOAD || return 0
 
+    # x265 video
     if command -v x265 &>/dev/null && [ ! -f "$WORKDIR/bosphorus_hd.y4m" ]; then
         if [ ! -f "$WORKDIR/bosphorus_hd.7z" ] || ! 7z t "$WORKDIR/bosphorus_hd.7z" &>/dev/null; then
             echo "--> Downloading video archive..."
             wget -c --show-progress -qO "$WORKDIR/bosphorus_hd.7z" \
                 http://ultravideo.cs.tut.fi/video/Bosphorus_1920x1080_120fps_420_8bit_YUV_Y4M.7z
         fi
-        echo "--> Unzipping video..."
-        cd "$WORKDIR"
-        7z e bosphorus_hd.7z -o./ &>/dev/null
+        cd "$WORKDIR" && 7z e bosphorus_hd.7z -o./ &>/dev/null 2>&1 || true
         mv Bosphorus_1920x1080_120fps_420_8bit_YUV.y4m bosphorus_hd.y4m 2>/dev/null || true
     fi
 
+    # Firefox tarball for xz
     if [ ! -f "$WORKDIR/firefox102.tar" ]; then
         if [ ! -f "$WORKDIR/firefox102.tar.xz" ] || ! xz -t "$WORKDIR/firefox102.tar.xz" &>/dev/null; then
             echo "--> Downloading Firefox archive..."
@@ -261,140 +288,328 @@ EOF
         xz -d -k -q -f "$WORKDIR/firefox102.tar.xz"
     fi
 
-    if [ ! -d "$WORKDIR/ffmpeg-$FFMPEGVER" ]; then
-        if [ ! -f "$WORKDIR/ffmpeg.tar.xz" ] || ! tar -tf "$WORKDIR/ffmpeg.tar.xz" &>/dev/null; then
-            echo "--> Downloading ffmpeg archive..."
-            wget -c --show-progress -qO "$WORKDIR/ffmpeg.tar.xz" \
-                "https://ffmpeg.org/releases/ffmpeg-$FFMPEGVER.tar.xz"
+    # FFmpeg source
+    if [ ! -d "$WORKDIR/ffmpeg-src" ]; then
+        echo "--> Cloning ffmpeg source..."
+        git clone --depth 1 "https://github.com/FFmpeg/FFmpeg.git" "$WORKDIR/ffmpeg-src" 2>/dev/null || true
+        if [ -d "$WORKDIR/ffmpeg-src" ]; then
+            cd "$WORKDIR/ffmpeg-src" || true
+            ./configure --prefix=/tmp --disable-debug --enable-static \
+                --enable-gpl --enable-version3 --disable-ffplay --disable-ffprobe \
+                --disable-programs --disable-doc --disable-network --disable-protocols \
+                --disable-filters --disable-iconv --enable-libdrm --disable-stripping \
+                --disable-autodetect --cpu=native &>/dev/null || true
         fi
-        echo "--> Preparing ffmpeg..."
-        cd "$WORKDIR"
-        tar -xf ffmpeg.tar.xz
     fi
 
-    if [ ! -d "$WORKDIR/y-cruncher"*v*/ ]; then
+    # y-cruncher
+    if [ ! -d "$WORKDIR/y-cruncher" ]; then
         local YCVER="0.8.6.9545"
         if [ ! -f "$WORKDIR/y-cruncher.tar.xz" ] || ! tar -tf "$WORKDIR/y-cruncher.tar.xz" &>/dev/null; then
             echo "--> Downloading y-cruncher archive..."
             wget -c --show-progress -qO "$WORKDIR/y-cruncher.tar.xz" \
                 "https://github.com/Mysticial/y-cruncher/releases/download/v${YCVER}/y-cruncher.v${YCVER}-static.tar.xz"
         fi
-        echo "--> Uncompressing y-cruncher..."
-        cd "$WORKDIR"
-        tar -xf y-cruncher.tar.xz
-    fi
-
-    echo -e "\n${TB}Preparing ffmpeg source...${TN}"
-    if [ -d "$WORKDIR/ffmpeg-$FFMPEGVER" ]; then
-        cd "$WORKDIR/ffmpeg-$FFMPEGVER" || true
-        make -s distclean &>/dev/null || true
-        ./configure --prefix=/tmp --disable-debug --enable-static \
-            --enable-gpl --enable-version3 --disable-ffplay --disable-ffprobe \
-            --disable-programs --disable-doc --disable-network --disable-protocols \
-            --disable-filters --disable-iconv --enable-libdrm --disable-stripping \
-            --disable-autodetect --cpu=native &>/dev/null || true
+        cd "$WORKDIR" && tar -xf y-cruncher.tar.xz 2>/dev/null || true
+        mkdir -p "$WORKDIR/y-cruncher" 2>/dev/null || true
+        mv "$WORKDIR"/y-cruncher\ v*/ "$WORKDIR/y-cruncher/" 2>/dev/null || true
     fi
 }
 
-# --- Signal handling ---
-killproc() {
-    echo -e "\n**** Received SIGINT, aborting! ****\n"
-    kill -- -$$ 2>/dev/null || true
-    exit 2
-}
-exitproc() {
-    rm -f "$WORKDIR"/run* "$WORKDIR"/stressC "$WORKDIR"/*.txt "$WORKDIR"/*.jpg "$WORKDIR"/*.ppm
-    if "$CLEANUP"; then
-        rm -f "$WORKDIR"/firefox102.tar.xz "$WORKDIR"/*.zst "$WORKDIR"/*.7z \
-            "$WORKDIR"/ffmpeg.tar.xz "$WORKDIR"/y-cruncher.tar.xz
-        rm -rf "$WORKDIR"/ffmpeg-* "$WORKDIR"/linux-* "$WORKDIR"/y-cruncher*/
-        rm -f "$WORKDIR"/firefox102.tar "$WORKDIR"/bosphorus_hd.y4m
-    fi
-}
-trap killproc INT
-trap exitproc EXIT
-
-# --- Main ---
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --workdir) WORKDIR="$2"; shift 2 ;;
-        --ffmpeg-ver) FFMPEGVER="$2"; shift 2 ;;
-        --kernel-ver) KERNVER="$2"; shift 2 ;;
-        --no-download) NO_DOWNLOAD=true; shift ;;
-        --cleanup)
-            echo "Cleaning cache directory: $WORKDIR"
-            rm -rf "$WORKDIR"/firefox102.tar.xz "$WORKDIR"/firefox102.tar "$WORKDIR"/bosphorus_hd*
-            rm -rf "$WORKDIR"/*.7z "$WORKDIR"/ffmpeg.tar.xz "$WORKDIR"/ffmpeg-*
-            rm -rf "$WORKDIR"/y-cruncher* "$WORKDIR"/run* "$WORKDIR"/stressC
-            rm -f "$WORKDIR"/*.txt "$WORKDIR"/*.jpg "$WORKDIR"/*.ppm
-            echo "Done."
-            exit 0 ;;
-        -h|--help)
-            echo "Usage: sudo ./comprehensive_benchmarker.sh [--workdir DIR] [--no-download] [--cleanup]"
-            echo "Runs 12 workloads on the CURRENT active scheduler using CachyOS benchmarker methodology."
-            exit 0 ;;
-        *) err "Unknown option: $1"; exit 1 ;;
-    esac
-done
-
-[ "$RAMSIZE" -lt 3500 ] && { echo "Need at least 4 GB RAM"; exit 2; }
-mkdir -p "$WORKDIR"
-
+# --- CachyOS-style workload runners ---
 ulimit -n 4096
 
-LOGFILE="$WORKDIR/benchie_${SCX:-none}_${CDATE}.log"
-echo "=====================================================================" > "$LOGFILE"
-echo "  scx_flow Comprehensive Benchmark  $(date)" >> "$LOGFILE"
-echo "  Scheduler: ${SCX:-none} ${SCX_VERSION:-}" >> "$LOGFILE"
-echo "  Kernel: $(uname -r)" >> "$LOGFILE"
-echo "  CPU: $(nproc) cores / $(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo) GB RAM" >> "$LOGFILE"
-echo "=====================================================================" >> "$LOGFILE"
+animate() {
+    local idx=$1 pid=$2 s='-+' i=0
+    while kill -0 "$pid" &>/dev/null; do
+        # Check scheduler integrity on every tick for non-baseline
+        if [ "${CURRENT_SCHED:-none}" != "none" ] && [ "${CURRENT_SCHED:-baseline}" != "baseline" ]; then
+            local current_ops
+            current_ops=$(current_sched_ext_ops)
+            if [ -z "$current_ops" ]; then
+                printf "\n${RED}${TB}**** Scheduler crashed during workload! ****${TN}\n"
+                kill -9 "$pid" 2>/dev/null || true
+                echo "${WLABEL[$1]:-$1}: FAILED (scheduler crashed)" >> "$LOGFILE"
+                return 1
+            fi
+        fi
+        i=$(( (i+1) % 2 ))
+        printf "\b${s:$i:1}"
+        sleep 1
+    done
+    printf "\b "
+    local result
+    result=$(cat "$RF" 2>/dev/null || echo "FAILED")
+    echo "$result"
+    echo "${WLABEL[$1]:-$1}: $result" >> "$LOGFILE"
+}
 
-say "Scheduler: ${SCX:-none} ${SCX_VERSION:-}"
-say "Work dir: $WORKDIR"
-say "Log file: $LOGFILE"
+run_workload() {
+    local wl="$1"
+    local log_dir="$2"
+    shift 2
+    RF="$log_dir/${wl}.result"
+    local pid=""
 
-prepare_assets
-
-say "Starting benchmarks..."
-echo -e "\n${TB}Starting...${TN}\n" | tee -a "$LOGFILE"
-sync
-sleep 2
-
-for WI in 0 1 2 3 4 5 6 7 8; do
-    case $WI in
-        0) runstress; RF="$WORKDIR/runstress" ;;
-        1) runext;    RF="$WORKDIR/runffm" ;;
-        2) runx265;   RF="$WORKDIR/runx265" ;;
-        3) runargon;  RF="$WORKDIR/runargon" ;;
-        4) runperf_sch; RF="$WORKDIR/runperfs" ;;
-        5) runperf_mem; RF="$WORKDIR/runperfm" ;;
-        6) runprime;  RF="$WORKDIR/runprime" ;;
-        7) runxz;     RF="$WORKDIR/runxz" ;;
-        8) runyc;     RF="$WORKDIR/runyc" ;;
+    case "$wl" in
+        stress-ng-cpu-cache-mem)
+            /usr/bin/time -f %e -o "$RF" stress-ng -q --job "$WORKDIR/stressC" &>/dev/null &
+            pid=$!
+            ;;
+        perf-sched-msg-fork)
+            perf bench -f simple sched messaging -t -g 24 -l 6000 1>"$RF" &
+            pid=$!
+            ;;
+        perf-memcpy)
+            /usr/bin/time -f %e -o "$RF" perf bench -f simple mem memcpy \
+                --nr_loops 100 --size 2GB -f default &>/dev/null &
+            pid=$!
+            ;;
+        primes)
+            /usr/bin/time -f%e -o "$RF" primesieve 666000000000 --no-status | \
+                awk -F ': ' '/Seconds/{print $2}' 1>"$RF" &
+            pid=$!
+            ;;
+        argon2-hashing)
+            /usr/bin/time -f %e -o "$RF" argon2 BenchieSalt -id -t 20 -m 21 \
+                -p "$CPUCORES" &>/dev/null <<< "$(head -c 64 /dev/urandom)" &
+            pid=$!
+            ;;
+        xz-compression)
+            if [ ! -f "$WORKDIR/firefox102.tar" ]; then
+                echo "SKIP" > "$RF"
+            else
+                /usr/bin/time -f %e -o "$RF" xz -z -k -T"${CPUCORES}" -Qqq \
+                    -f "$WORKDIR/firefox102.tar" &
+                pid=$!
+            fi
+            ;;
+        x265-encoding)
+            if [ ! -f "$WORKDIR/bosphorus_hd.y4m" ]; then
+                echo "SKIP" > "$RF"
+            else
+                /usr/bin/time -f %e -o "$RF" x265 -p slow -b 6 -o /dev/null \
+                    --no-progress --log-level none --input "$WORKDIR/bosphorus_hd.y4m" &
+                pid=$!
+            fi
+            ;;
+        ffmpeg-compilation)
+            if [ ! -d "$WORKDIR/ffmpeg-src" ]; then
+                echo "SKIP" > "$RF"
+            else
+                cd "$WORKDIR/ffmpeg-src" || { echo "SKIP" > "$RF"; break; }
+                /usr/bin/time -f %e -o "$RF" make -s -j"${CPUCORES}" &>/dev/null &
+                pid=$!
+            fi
+            ;;
+        y-cruncher)
+            local ycdir
+            ycdir=$(ls -d "$WORKDIR"/y-cruncher/*/ 2>/dev/null | head -1)
+            if [ -z "$ycdir" ]; then
+                echo "SKIP" > "$RF"
+            else
+                cd "$ycdir" || { echo "SKIP" > "$RF"; break; }
+                rm -f "Pi"*.txt
+                /usr/bin/time -f%e -o "$RF" ./y-cruncher bench 1b -od:0 \
+                    -o "$WORKDIR" &>/dev/null &
+                pid=$!
+            fi
+            ;;
     esac
-    wait 2>/dev/null || true
+
     if [ -f "$RF" ] && [ "$(cat "$RF" 2>/dev/null)" = "SKIP" ]; then
-        echo -e "* ${TNAMES[$WI]}:\t\t\tSKIPPED" >> "$LOGFILE"
-        printf "* ${TNAMES[$WI]}:\t\t\tSKIPPED\n"
+        printf '  %-40s %s\n' "${WLABEL[$wl]:-$wl}..." "SKIPPED"
+        echo "${WLABEL[$wl]:-$wl}: SKIPPED" >> "$LOGFILE"
+        return 0
     fi
-    sleep 2
+
+    printf '  %-40s' "${WLABEL[$wl]:-$wl}..."
+    animate "$wl" "$pid" || true
+    wait "$pid" 2>/dev/null || true
+}
+
+# --- Render outputs (from mini_benchmarker) ---
+render_csv_report() {
+    local tagged_dir="$RESULTS_DIR/tagged"
+    mkdir -p "$tagged_dir"
+    local csv="$tagged_dir/comprehensive_benchmarker_summary.csv"
+    local report="$tagged_dir/comprehensive_benchmarker_report.md"
+
+    local scheduler_names=()
+    for d in "$RESULTS_DIR/runs"/*; do
+        [ -d "$d" ] || continue
+        scheduler_names+=("$(basename "$d")")
+    done
+
+    # Build CSV
+    {
+        printf 'scheduler'
+        for wl in $(printf '%s\n' "${ALL_WORKLOADS[@]}" | sort); do
+            printf ',%s' "$wl"
+        done
+        printf ',total,relative\n'
+    } > "$csv"
+
+    local baseline_total=""
+    for scheduler in "${scheduler_names[@]}"; do
+        local run_dir="$RESULTS_DIR/runs/$scheduler/run_1"
+        [ -d "$run_dir" ] || continue
+        printf '%s' "$scheduler" >> "$csv"
+        local total=0
+        for wl in $(printf '%s\n' "${ALL_WORKLOADS[@]}" | sort); do
+            local result_file="$run_dir/${wl}.result"
+            if [ -f "$result_file" ]; then
+                local val
+                val="$(cat "$result_file")"
+                case "$val" in
+                    ''|SKIP|failed) printf ',' >> "$csv" ;;
+                    *)
+                        printf ',%s' "$val" >> "$csv"
+                        total=$(awk "BEGIN { printf \"%.3f\", $total + $val }")
+                        ;;
+                esac
+            else
+                printf ',' >> "$csv"
+            fi
+        done
+        total_fmt=$(awk "BEGIN { printf \"%.3f\", $total }")
+        if [ "$scheduler" = "baseline" ]; then
+            baseline_total="$total"
+            printf ',%s,1.000x\n' "$total_fmt" >> "$csv"
+        elif [ -n "$baseline_total" ] && [ "$(echo "$baseline_total > 0" | bc -l)" -eq 1 ]; then
+            relative=$(awk "BEGIN { printf \"%.3fx\", $total / $baseline_total }")
+            printf ',%s,%s\n' "$total_fmt" "$relative" >> "$csv"
+        else
+            printf ',%s,\n' "$total_fmt" >> "$csv"
+        fi
+    done
+
+    # Render charts if plotter exists
+    local plotter="$SCRIPT_DIR/comprehensive_benchmarker_plot.py"
+    if [ -f "$plotter" ]; then
+        python3 "$plotter" --csv "$csv" --output-dir "$tagged_dir" 2>/dev/null || true
+    fi
+
+    say "CSV:    $csv"
+    say "PNG:    $tagged_dir/comprehensive_benchmarker_comparison.png"
+    say "SVG:    $tagged_dir/comprehensive_benchmarker_comparison.svg"
+    say "Report: $report"
+}
+
+prune_old_results() {
+    [ -d "$RESULTS_ROOT" ] || return 0
+    local old_dirs
+    old_dirs=$(ls -1dt "$RESULTS_ROOT"/* 2>/dev/null | tail -n +"$((KEEP_RESULTS + 1))" || true)
+    [ -n "$old_dirs" ] || return 0
+    while IFS= read -r old_dir; do
+        [ -n "$old_dir" ] || continue
+        rm -rf "$old_dir"
+    done <<< "$old_dirs"
+}
+
+# --- Main ---
+usage() {
+    cat <<EOF
+Usage: sudo ./comprehensive_benchmarker.sh [options]
+  --runs N                  Runs per scheduler (default: 1)
+  --keep-results N          Keep N newest result dirs (default: 3)
+  --results-dir DIR         Custom results directory
+  --schedulers "LIST"       Space-separated list (default: "baseline scx_cosmos ...")
+  --skip-workload LIST      Comma-separated workloads to skip
+  --workdir DIR             Asset cache directory
+  --no-download             Skip downloading video/ffmpeg/etc
+  --clean-cache             Remove cached assets and exit
+  -h, --help                Show this help
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --runs) RUNS="$2"; shift 2 ;;
+        --keep-results) KEEP_RESULTS="$2"; shift 2 ;;
+        --results-dir) RESULTS_DIR="$2"; shift 2 ;;
+        --schedulers) read -r -a SCHEDULERS <<< "$2"; shift 2 ;;
+        --skip-workload) SKIP_WORKLOADS="$2"; shift 2 ;;
+        --workdir) WORKDIR="$2"; shift 2 ;;
+        --no-download) NO_DOWNLOAD=true; shift ;;
+        --clean-cache)
+            echo "Cleaning cache: $WORKDIR"
+            rm -rf "$WORKDIR"/firefox102.tar* "$WORKDIR"/bosphorus_hd* "$WORKDIR"/*.7z
+            rm -rf "$WORKDIR"/ffmpeg-src "$WORKDIR"/y-cruncher* "$WORKDIR"/run* "$WORKDIR"/stressC
+            echo "Done."; exit 0 ;;
+        -h|--help) usage; exit 0 ;;
+        *) err "Unknown option: $1"; usage >&2; exit 1 ;;
+    esac
 done
 
-# Calculate results
-unset ARRAYTIME
-ARRAYTIME=($(awk -F': ' '{print $2}' "$LOGFILE" 2>/dev/null || true))
-TOTTIME="?"
-if [ "${#ARRAYTIME[@]}" -gt 0 ]; then
-    TOTTIME=$(IFS="+" ; python -c "print(round((${ARRAYTIME[*]}),2))" 2>/dev/null || echo "?")
+case "$RUNS" in ''|*[!0-9]*|0) err "--runs must be a positive integer"; exit 1 ;; esac
+
+declare -A SKIP_MAP
+if [ -n "$SKIP_WORKLOADS" ]; then
+    IFS=',' read -ra SKIP_LIST <<< "$SKIP_WORKLOADS"
+    for wl in "${SKIP_LIST[@]}"; do SKIP_MAP["$wl"]=1; done
 fi
 
-COEFF=$(python -c "print(round((($CPUCORES + 1) / 2 * 3.0 / 2) ** (1/3),2))" 2>/dev/null || echo "1")
+ensure_sudo_ready
+start_sudo_keepalive
+capture_initial_state
 
-echo -e "\n==================================================" | tee -a "$LOGFILE"
-echo "  Total time: ${TOTTIME}s" | tee -a "$LOGFILE"
-echo "==================================================" | tee -a "$LOGFILE"
-echo "Total time (s): $TOTTIME" >> "$LOGFILE"
+mkdir -p "$RESULTS_DIR/runs"
+prepare_assets
+ulimit -n 4096
 
-ok "Benchmark complete"
-say "Results: $LOGFILE"
+say "Results directory: $RESULTS_DIR"
+say "Schedulers: ${SCHEDULERS[*]}"
+say "Workloads: ${ALL_WORKLOADS[*]}"
+
+for scheduler in "${SCHEDULERS[@]}"; do
+    say "==========================================="
+    say "Scheduler: $scheduler"
+    say "==========================================="
+    CURRENT_SCHED="$scheduler"
+
+    stop_all_schedulers
+
+    if [ "$scheduler" != "baseline" ]; then
+        if ! start_scheduler_manual "$scheduler" "$scheduler"; then
+            warn "Activation failed for $scheduler; skipping"
+            continue
+        fi
+    fi
+
+    for run_index in $(seq 1 "$RUNS"); do
+        run_dir="$RESULTS_DIR/runs/${scheduler}/run_${run_index}"
+        mkdir -p "$run_dir"
+        LOGFILE="$run_dir/benchmark.log"
+        {
+            echo "=== Comprehensive benchmark: $scheduler run $run_index ==="
+            echo "Started: $(date)"
+            echo "sched_ext state: $(current_sched_ext_state)"
+            echo "scheduler: $(current_sched_ext_ops)"
+        } > "$LOGFILE"
+
+        for wl in "${ALL_WORKLOADS[@]}"; do
+            if [ "${SKIP_MAP[$wl]:-}" = "1" ]; then
+                say "  $wl: skipped"
+                echo "$wl: SKIPPED (user skip)" >> "$LOGFILE"
+                continue
+            fi
+            run_workload "$wl" "$run_dir"
+        done
+
+        echo "Completed: $(date)" >> "$LOGFILE"
+        say "  Run $run_index/$RUNS done"
+    done
+
+    if [ "$scheduler" != "baseline" ]; then
+        stop_all_schedulers
+    fi
+done
+
+restore_default_service_state
+render_csv_report
+fix_results_ownership
+prune_old_results
+
+ok "Comprehensive benchmark complete"
+say "Results: $RESULTS_DIR"
