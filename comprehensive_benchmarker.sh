@@ -51,6 +51,33 @@ err()  { printf "${BOLD}${RED}[err ]${NC} %s\n" "$1" >&2; }
 
 CPUCORES=$(nproc)
 
+# Find time command — /usr/bin/time (package "time") or fallback to bash builtin
+TIME_CMD=""
+if [ -x /usr/bin/time ]; then
+    TIME_CMD="/usr/bin/time"
+elif command -v gtime &>/dev/null; then
+    TIME_CMD="gtime"
+else
+    # Fallback: shell-based timing
+    TIME_CMD=""
+    warn "/usr/bin/time not found — install 'time' package for accurate measurements"
+fi
+
+time_cmd() {
+    local outfile="$1" label="$2"
+    shift 2
+    if [ -n "$TIME_CMD" ]; then
+        "$TIME_CMD" -f "%e" -o "$outfile" "$@" &>/dev/null &
+    else
+        # Fallback: use date +%s%N
+        (
+            start=$(date +%s%N)
+            "$@" &>/dev/null
+            echo $(( $(date +%s%N) - start )) | awk '{printf "%.3f\n", $1 / 1000000000}' > "$outfile"
+        ) &
+    fi
+}
+
 declare -A WLABEL
 WLABEL=(
     [stress-ng-cpu-cache-mem]="stress-ng cpu-cache-mem"
@@ -353,7 +380,7 @@ run_workload() {
 
     case "$wl" in
         stress-ng-cpu-cache-mem)
-            /usr/bin/time -f %e -o "$RF" stress-ng -q --job "$WORKDIR/stressC" &>/dev/null &
+            time_cmd "$RF" "" stress-ng -q --job "$WORKDIR/stressC" &>/dev/null &
             pid=$!
             ;;
         perf-sched-msg-fork)
@@ -361,17 +388,17 @@ run_workload() {
             pid=$!
             ;;
         perf-memcpy)
-            /usr/bin/time -f %e -o "$RF" perf bench -f simple mem memcpy \
+            time_cmd "$RF" "" perf bench -f simple mem memcpy \
                 --nr_loops 100 --size 2GB -f default &>/dev/null &
             pid=$!
             ;;
         primes)
-            /usr/bin/time -f%e -o "$RF" primesieve 666000000000 --no-status | \
+            time_cmd "$RF" "" primesieve 666000000000 --no-status | \
                 awk -F ': ' '/Seconds/{print $2}' 1>"$RF" &
             pid=$!
             ;;
         argon2-hashing)
-            /usr/bin/time -f %e -o "$RF" argon2 BenchieSalt -id -t 20 -m 21 \
+            time_cmd "$RF" "" argon2 BenchieSalt -id -t 20 -m 21 \
                 -p "$CPUCORES" &>/dev/null <<< "$(head -c 64 /dev/urandom)" &
             pid=$!
             ;;
@@ -379,7 +406,7 @@ run_workload() {
             if [ ! -f "$WORKDIR/firefox102.tar" ]; then
                 echo "SKIP" > "$RF"
             else
-                /usr/bin/time -f %e -o "$RF" xz -z -k -T"${CPUCORES}" -Qqq \
+                time_cmd "$RF" "" xz -z -k -T"${CPUCORES}" -Qqq \
                     -f "$WORKDIR/firefox102.tar" &
                 pid=$!
             fi
@@ -388,7 +415,7 @@ run_workload() {
             if [ ! -f "$WORKDIR/bosphorus_hd.y4m" ]; then
                 echo "SKIP" > "$RF"
             else
-                /usr/bin/time -f %e -o "$RF" x265 -p slow -b 6 -o /dev/null \
+                time_cmd "$RF" "" x265 -p slow -b 6 -o /dev/null \
                     --no-progress --log-level none --input "$WORKDIR/bosphorus_hd.y4m" &
                 pid=$!
             fi
@@ -398,20 +425,20 @@ run_workload() {
                 echo "SKIP" > "$RF"
             else
                 cd "$WORKDIR/ffmpeg-src" || { echo "SKIP" > "$RF"; break; }
-                /usr/bin/time -f %e -o "$RF" make -s -j"${CPUCORES}" &>/dev/null &
+                time_cmd "$RF" "" make -s -j"${CPUCORES}" &>/dev/null &
                 pid=$!
             fi
             ;;
         y-cruncher)
             local ycdir
-            ycdir=$(ls -d "$WORKDIR"/y-cruncher/*/ 2>/dev/null | head -1)
+            ycdir=$(find "$WORKDIR/y-cruncher" -maxdepth 2 -name 'y-cruncher' -type f 2>/dev/null | head -1)
             if [ -z "$ycdir" ]; then
                 echo "SKIP" > "$RF"
             else
+                ycdir=$(dirname "$ycdir")
                 cd "$ycdir" || { echo "SKIP" > "$RF"; break; }
                 rm -f "Pi"*.txt
-                /usr/bin/time -f%e -o "$RF" ./y-cruncher bench 1b -od:0 \
-                    -o "$WORKDIR" &>/dev/null &
+                time_cmd "$RF" "" ./y-cruncher bench 1b -od:0 -o "$WORKDIR" &
                 pid=$!
             fi
             ;;

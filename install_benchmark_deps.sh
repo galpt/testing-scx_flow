@@ -29,6 +29,7 @@ REQUIRED_PACKAGES=(
     argon2
     x265
     xz
+    time
 )
 
 # On Arch/CachyOS, hackbench and lmbench are not available as standalone
