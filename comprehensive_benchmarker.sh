@@ -321,7 +321,14 @@ while [ "$#" -gt 0 ]; do
         --ffmpeg-ver) FFMPEGVER="$2"; shift 2 ;;
         --kernel-ver) KERNVER="$2"; shift 2 ;;
         --no-download) NO_DOWNLOAD=true; shift ;;
-        --cleanup) CLEANUP=true; shift ;;
+        --cleanup)
+            echo "Cleaning cache directory: $WORKDIR"
+            rm -rf "$WORKDIR"/firefox102.tar.xz "$WORKDIR"/firefox102.tar "$WORKDIR"/bosphorus_hd*
+            rm -rf "$WORKDIR"/*.7z "$WORKDIR"/ffmpeg.tar.xz "$WORKDIR"/ffmpeg-*
+            rm -rf "$WORKDIR"/y-cruncher* "$WORKDIR"/run* "$WORKDIR"/stressC
+            rm -f "$WORKDIR"/*.txt "$WORKDIR"/*.jpg "$WORKDIR"/*.ppm
+            echo "Done."
+            exit 0 ;;
         -h|--help)
             echo "Usage: sudo ./comprehensive_benchmarker.sh [--workdir DIR] [--no-download] [--cleanup]"
             echo "Runs 12 workloads on the CURRENT active scheduler using CachyOS benchmarker methodology."
