@@ -368,7 +368,7 @@ run_workload() {
     local workload="$1" log_dir="$2" label="$3"
     local log_file="$log_dir/${workload}.log"
     local result_file="$log_dir/${workload}.result"
-    local timeout_sec="$4"
+    local timeout_sec
 
     case "$workload" in
         stress-ng-cpu-cache-mem)  timeout_sec=30 ;;
@@ -382,7 +382,7 @@ run_workload() {
         *) echo "Unknown workload: $workload"; return 1 ;;
     esac
 
-    printf '  %-35s' "$workload..."
+    printf '  %-35s' "$workload..." >&2
     local start_ns end_ns elapsed_ns elapsed_sec start_wall end_wall
 
     start_ns="$(date +%s%N)"
@@ -409,13 +409,13 @@ run_workload() {
 
     # Check for SKIP in output
     if grep -q "SKIP:" "$log_file" 2>/dev/null; then
-        printf 'SKIPPED (%s sec)\n' "$elapsed_sec"
+        printf '  SKIPPED (%s sec)\n' "$elapsed_sec" >&2
         echo "skipped" > "$result_file"
     elif [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 124 ]; then
-        printf 'FAILED (exit=%d, %s sec)\n' "$exit_code" "$elapsed_sec"
+        printf '  FAILED (exit=%d, %s sec)\n' "$exit_code" "$elapsed_sec" >&2
         echo "failed" > "$result_file"
     else
-        printf '%s sec\n' "$elapsed_sec"
+        printf '  %s sec\n' "$elapsed_sec" >&2
     fi
 }
 
