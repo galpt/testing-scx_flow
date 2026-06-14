@@ -571,7 +571,9 @@ for scheduler in "${SCHEDULERS[@]}"; do
     say "Scheduler: $scheduler"
     say "==========================================="
 
+    say "Resetting sched_ext state for $scheduler..."
     stop_all_schedulers
+    say "Reset done, progressing to workloads..."
 
     if [ "$scheduler" != "baseline" ]; then
         if ! start_scheduler_manual "$scheduler" "$scheduler"; then
@@ -592,12 +594,15 @@ for scheduler in "${SCHEDULERS[@]}"; do
         for workload in "${ALL_WORKLOADS[@]}"; do
             if [ "${SKIP_MAP[$workload]:-}" = "1" ]; then
                 echo "  SKIPPED: $workload (user skip)" >> "$log_file"
+                say "  $workload: skipped"
                 continue
             fi
+            say "  $workload... (0 sec)" 2>/dev/null || printf '  %-40s' "$workload..."
             run_workload "$workload" "$run_dir" "${scheduler}/run${run_index}" >> "$log_file" 2>&1
         done
 
         echo "Completed: $(date)" >> "$log_file"
+        say "  Run $run_index/$RUNS done"
     done
 
     if [ "$scheduler" != "baseline" ]; then
