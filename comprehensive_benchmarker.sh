@@ -365,7 +365,15 @@ animate() {
     done
     printf "\b "
     local result
-    result=$(cat "$RF" 2>/dev/null || echo "FAILED")
+    if [ -s "$RF" ]; then
+        result=$(cat "$RF" 2>/dev/null || echo "FAILED")
+    else
+        result="FAILED"
+    fi
+    # Validate result is a number
+    case "$result" in
+        ''|*[!0-9.]*) result="FAILED" ;;
+    esac
     echo "$result"
     echo "${WLABEL[$1]:-$1}: $result" >> "$LOGFILE"
 }
@@ -376,10 +384,30 @@ run_workload() {
     shift 2
     RF="$log_dir/${wl}.result"
     local pid=""
+    local tool=""
+
+    # Check required tool before each workload
+    case "$wl" in
+        stress-ng-cpu-cache-mem) tool="stress-ng" ;;
+        perf-sched-msg-fork)     tool="perf" ;;
+        perf-memcpy)             tool="perf" ;;
+        primes)                  tool="primesieve" ;;
+        argon2-hashing)          tool="argon2" ;;
+        xz-compression)          tool="xz" ;;
+        x265-encoding)           tool="x265" ;;
+        ffmpeg-compilation)      tool="make" ;;
+        y-cruncher)              tool="" ;;  # checked separately
+    esac
+    if [ -n "$tool" ] && ! command -v "$tool" &>/dev/null; then
+        echo "SKIP" > "$RF"
+        printf '  %-40s %s\n' "${WLABEL[$wl]:-$wl}..." "SKIP ($tool not found)"
+        echo "${WLABEL[$wl]:-$wl}: SKIPPED ($tool not found)" >> "$LOGFILE"
+        return 0
+    fi
 
     case "$wl" in
         stress-ng-cpu-cache-mem)
-            time_cmd "$RF" "" stress-ng -q --job "$WORKDIR/stressC" &>/dev/null &
+            time_cmd "$RF" "" stress-ng -q --job "$WORKDIR/stressC" &
             pid=$!
             ;;
         perf-sched-msg-fork)
