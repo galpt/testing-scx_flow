@@ -73,6 +73,7 @@ Options:
   --schedulers "LIST"       Space-separated scheduler list
                             Default: "baseline scx_cosmos scx_bpfland scx_flow"
   --skip-workload LIST      Comma-separated workloads to skip (ffmpeg-compilation,etc)
+  --clean-cache             Remove the cache directory (ffmpeg source, etc.)
   -h, --help                Show this help
 
 Workloads:
@@ -83,7 +84,7 @@ Workloads:
   5. xz-compression
   6. primes
   7. x265-encoding
-  8. ffmpeg-compilation  (requires git clone of ffmpeg source)
+  8. ffmpeg-compilation  (cloned to .cache/ffmpeg-src on first run)
 EOF
 }
 
@@ -327,19 +328,36 @@ run_x265_encoding() {
             --output /dev/null 2>&1 || true
 }
 
+CACHE_DIR="$SCRIPT_DIR/.cache"
+FFMPEG_SRC="$CACHE_DIR/ffmpeg-src"
+
 run_ffmpeg_compilation() {
     log_file="$1" timeout_sec="$2"
-    local ffmpeg_src="$SCRIPT_DIR/.cache/ffmpeg-src"
-    if [ ! -d "$ffmpeg_src" ]; then
-        echo "SKIP: ffmpeg source not at $ffmpeg_src"
-        echo "To set up: git clone --depth 1 https://github.com/FFmpeg/FFmpeg.git \"$ffmpeg_src\""
-        return 0
+    if [ ! -d "$FFMPEG_SRC" ]; then
+        say "Cloning ffmpeg source (depth=1) to $FFMPEG_SRC..."
+        mkdir -p "$CACHE_DIR"
+        if ! git clone --depth 1 "https://github.com/FFmpeg/FFmpeg.git" "$FFMPEG_SRC" 2>&1; then
+            echo "WARN: failed to clone ffmpeg source; skipping ffmpeg-compilation"
+            rm -rf "$FFMPEG_SRC"
+            return 0
+        fi
+        ok "ffmpeg source cloned"
     fi
-    local build_dir="$ffmpeg_src/build"
+    local build_dir="$FFMPEG_SRC/build"
     mkdir -p "$build_dir"
     cd "$build_dir"
     ../configure --disable-all --disable-autodetect --enable-small 2>&1
     timeout "${timeout_sec}s" make -j"$(nproc)" 2>&1 || true
+}
+
+clean_cache() {
+    if [ -d "$CACHE_DIR" ]; then
+        say "Removing cache directory: $CACHE_DIR"
+        rm -rf "$CACHE_DIR"
+        ok "Cache cleaned"
+    else
+        say "No cache directory to clean"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -521,6 +539,7 @@ while [ "$#" -gt 0 ]; do
         --results-dir) RESULTS_DIR="$2"; shift 2 ;;
         --schedulers) read -r -a SCHEDULERS <<< "$2"; shift 2 ;;
         --skip-workload) SKIP_WORKLOADS="$2"; shift 2 ;;
+        --clean-cache) clean_cache; exit 0 ;;
         -h|--help) usage; exit 0 ;;
         *) err "Unknown option: $1"; usage >&2; exit 1 ;;
     esac
